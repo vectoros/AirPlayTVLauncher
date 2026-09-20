@@ -4,6 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.net.ConnectivityManager;
+import android.net.Network;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -58,14 +61,14 @@ public final class WeatherService implements AutoCloseable {
     }
 
     public static final class Weather {
-        public final String city, date;
+        public final String city, date, locationSource;
         public final double temperature, high, low;
         public final int code;
         public final long updatedAt;
         public final boolean offline;
 
         private Weather(String city, String date, double temperature, double high,
-                        double low, int code, long updatedAt, boolean offline) {
+                        double low, int code, long updatedAt, boolean offline, String locationSource) {
             this.city = city;
             this.date = date;
             this.temperature = temperature;
@@ -74,6 +77,7 @@ public final class WeatherService implements AutoCloseable {
             this.code = code;
             this.updatedAt = updatedAt;
             this.offline = offline;
+            this.locationSource = locationSource;
         }
 
         public String description() { return describe(code); }
@@ -81,23 +85,23 @@ public final class WeatherService implements AutoCloseable {
         public String rangeText() { return "最高 " + Math.round(high) + "°  最低 " + Math.round(low) + "°"; }
         public String updatedText() {
             String time = new SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(new Date(updatedAt));
-            return (offline ? "离线缓存 · " : "更新于 ") + time;
+            return (offline ? "上次缓存 · " : "更新于 ") + time;
         }
 
         Weather asOffline() {
-            return new Weather(city, date, temperature, high, low, code, updatedAt, true);
+            return new Weather(city, date, temperature, high, low, code, updatedAt, true, locationSource);
         }
 
         JSONObject json() throws Exception {
             return new JSONObject().put("city", city).put("date", date)
                     .put("temperature", temperature).put("high", high).put("low", low)
-                    .put("code", code).put("updatedAt", updatedAt);
+                    .put("code", code).put("updatedAt", updatedAt).put("locationSource", locationSource);
         }
 
         static Weather fromJson(JSONObject o) throws Exception {
             return new Weather(o.getString("city"), o.getString("date"),
                     o.getDouble("temperature"), o.getDouble("high"), o.getDouble("low"),
-                    o.getInt("code"), o.getLong("updatedAt"), true);
+                    o.getInt("code"), o.getLong("updatedAt"), true, o.getString("locationSource"));
         }
     }
 
@@ -107,28 +111,52 @@ public final class WeatherService implements AutoCloseable {
     private volatile boolean closed;
     private int generation, searchGeneration;
     private final Set<HttpURLConnection> connections = new HashSet<>();
+    private static final long LOCATION_TTL_MS = 30 * 60 * 1000L;
+    private final ConnectivityManager connectivity;
+    private boolean automatic;
+    private Network locatedNetwork;
+    private long locatedAt;
     private Location location;
     private Weather cached;
 
     public WeatherService(Context context) {
         prefs = context.getApplicationContext().getSharedPreferences("weather", Context.MODE_PRIVATE);
-        try { location = Location.fromJson(new JSONObject(prefs.getString("location", ""))); }
-        catch (Exception ignored) { /* No configured city on first launch. */ }
-        if (location != null) {
-            try { cached = Weather.fromJson(new JSONObject(prefs.getString("cache", ""))); }
-            catch (Exception ignored) { /* A failed/obsolete cache must not break Home. */ }
+        connectivity = (ConnectivityManager) context.getApplicationContext()
+                .getSystemService(Context.CONNECTIVITY_SERVICE);
+        // Earlier versions had no explicit mode: migrate their fixed city to automatic IP lookup.
+        automatic = !"manual".equals(prefs.getString("mode", "automatic"));
+        if (!automatic) {
+            try { location = Location.fromJson(new JSONObject(prefs.getString("location", ""))); }
+            catch (Exception ignored) { automatic = true; }
         }
+        try { cached = Weather.fromJson(new JSONObject(prefs.getString(cacheKey(), ""))); }
+        catch (Exception ignored) { /* Old fixed-city caches must not masquerade as IP results. */ }
     }
 
     public synchronized Location getLocation() { return location; }
     public synchronized Weather getCached() { return cached; }
+    public synchronized boolean isAutomatic() { return automatic; }
+    private String cacheKey() { return automatic ? "ip_cache" : "manual_cache"; }
+
+    /** Changes mode explicitly; call refresh afterward. */
+    public synchronized void useAutomaticLocation() {
+        if (closed) return;
+        automatic = true;
+        location = null;
+        locatedAt = 0;
+        cached = null;
+        generation++;
+        prefs.edit().putString("mode", "automatic").remove("ip_cache").apply();
+    }
 
     /** Saves a user-selected city; call refresh afterward. Old city's cache is removed. */
     public synchronized void setLocation(Location selected) {
         if (closed) return;
         if (selected == null) throw new IllegalArgumentException("Select a location");
         try {
-            prefs.edit().putString("location", selected.json().toString()).remove("cache").apply();
+            prefs.edit().putString("mode", "manual").putString("location", selected.json().toString())
+                    .remove("manual_cache").apply();
+            automatic = false;
             location = selected;
             cached = null;
             generation++;
@@ -167,20 +195,44 @@ public final class WeatherService implements AutoCloseable {
         });
     }
 
-    /** null weather + null error means no city has been configured. */
-    public synchronized void refresh(Callback callback) {
+    public void refresh(Callback callback) { refresh(false, callback); }
+
+    /** Force bypasses the 30-minute IP location cache, e.g. after a network change. */
+    public synchronized void refresh(boolean force, Callback callback) {
         if (closed) return;
-        final Location target;
-        final int requestGeneration;
-        target = location;
-        requestGeneration = ++generation;
-        if (target == null) {
-            deliver(requestGeneration, callback, null, null);
-            return;
-        }
+        final int requestGeneration = ++generation;
+        final boolean byIp = automatic;
+        final Network network = currentNetwork();
+        final boolean locate = byIp && (force || location == null
+                || SystemClock.elapsedRealtime() - locatedAt >= LOCATION_TTL_MS
+                || !java.util.Objects.equals(network, locatedNetwork));
+        final Location selected = location;
         io.execute(() -> {
             synchronized (this) { if (closed || generation != requestGeneration) return; }
+            boolean locating = locate;
             try {
+                Location target = locate ? locateIp() : selected;
+                if (target == null) throw new java.io.IOException("Missing location");
+                synchronized (this) {
+                    if (closed || generation != requestGeneration) return;
+                    if (locate) {
+                        // After a cold start only the cached city is available. Keep its weather
+                        // if IP lookup confirms that city, so forecast failures still fall back.
+                        boolean samePlace = location == null
+                                ? cached != null && cached.city.equals(target.name)
+                                : location.name.equals(target.name)
+                                    && location.latitude == target.latitude
+                                    && location.longitude == target.longitude;
+                        if (!samePlace) {
+                            cached = null;
+                            prefs.edit().remove("ip_cache").apply();
+                        }
+                        location = target;
+                        locatedAt = SystemClock.elapsedRealtime();
+                        locatedNetwork = network;
+                    }
+                }
+                locating = false;
                 JSONObject response = request("https://api.open-meteo.com/v1/forecast?latitude="
                         + target.latitude + "&longitude=" + target.longitude
                         + "&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min"
@@ -191,10 +243,11 @@ public final class WeatherService implements AutoCloseable {
                         current.getDouble("temperature_2m"),
                         daily.getJSONArray("temperature_2m_max").getDouble(0),
                         daily.getJSONArray("temperature_2m_min").getDouble(0),
-                        current.getInt("weather_code"), System.currentTimeMillis(), false);
+                        current.getInt("weather_code"), System.currentTimeMillis(), false,
+                        byIp ? "IP 近似定位" : "手动城市");
                 synchronized (this) {
                     if (closed || generation != requestGeneration) return;
-                    prefs.edit().putString("cache", weather.json().toString()).apply();
+                    prefs.edit().putString(cacheKey(), weather.json().toString()).apply();
                     cached = weather;
                 }
                 deliver(requestGeneration, callback, weather, null);
@@ -202,12 +255,29 @@ public final class WeatherService implements AutoCloseable {
                 final Weather fallback;
                 synchronized (this) {
                     if (closed || generation != requestGeneration) return;
+                    // Do not reuse a location after a failed forced lookup.
+                    if (locating) { locatedAt = 0; location = null; }
                     fallback = cached == null ? null : cached.asOffline();
                     cached = fallback;
                 }
-                deliver(requestGeneration, callback, fallback, "天气更新失败，请检查网络");
+                deliver(requestGeneration, callback, fallback, locating
+                        ? "IP 定位失败，请检查网络或手动选择城市" : "天气更新失败，请检查网络");
             }
         });
+    }
+
+    private Network currentNetwork() {
+        try { return connectivity == null ? null : connectivity.getActiveNetwork(); }
+        catch (SecurityException ignored) { return null; }
+    }
+
+    private Location locateIp() throws Exception {
+        JSONObject result = request("https://ipwho.is/?lang=zh-CN&fields=success,city,region,latitude,longitude");
+        String city = result.optString("city", "").trim();
+        if (!result.optBoolean("success") || city.isEmpty())
+            throw new java.io.IOException("IP location unavailable");
+        return new Location(city, city + " · IP 近似定位",
+                result.getDouble("latitude"), result.getDouble("longitude"));
     }
 
     private void deliver(int requestGeneration, Callback callback, Weather weather, String error) {
