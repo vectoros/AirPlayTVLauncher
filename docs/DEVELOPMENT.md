@@ -58,3 +58,7 @@ GitHub Actions 已配置构建、Lint 和调试 APK 上传。当前仅建立本�
 ## v0.3.0 液态玻璃
 
 新增独立 LiquidGlassFrame，MainActivity 统一接入及保存开关。默认开启；详见 [LIQUID_GLASS.md](LIQUID_GLASS.md)。Git 分支 `feature/liquid-glass`。原生 API 31 背景模糊及 Canvas 折射近似，无新增库。
+
+## v0.4.0 AirPlay伴随服务
+
+复用上游Android移植，以独立APK部署；Launcher仅用导出的Activity入口，不跨包操作私有服务。Git子模块固定GPL来源版本；安装脚本固定二进制摘要，文档区分协议发现和实播验证。见 [AIRPLAY.md](AIRPLAY.md)。

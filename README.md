@@ -91,3 +91,7 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 ### 液态玻璃（v0.3.0）
 
 设置 → 液态玻璃 → 启用液态玻璃。默认开启，即时切换并保存；关闭恢复毛玻璃。天气、应用及 HDMI 卡片支持边缘折射、高光和焦点扫光，文字图标保持清晰。参见 [效果与兼容性说明](docs/LIQUID_GLASS.md)。
+
+### AirPlay 接收（v0.4.0）
+
+首页 AirPlay 或设置 → AirPlay 接收，打开独立开源接收端。支持局域网发现、后台运行和开机启动。安装、GPL 来源、使用及兼容性限制见 [AIRPLAY.md](docs/AIRPLAY.md)。
