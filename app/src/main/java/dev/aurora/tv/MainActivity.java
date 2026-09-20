@@ -76,6 +76,10 @@ public final class MainActivity extends Activity {
         TextView brand = text("A U R O R A", 15, 0xffe0eef2);
         brand.setTypeface(null, Typeface.BOLD);
         header.addView(brand, new LinearLayout.LayoutParams(0, -1, 1));
+        TextView airplay = button("AirPlay", () -> showAirPlay());
+        header.addView(airplay);
+        LinearLayout.LayoutParams ap = (LinearLayout.LayoutParams) airplay.getLayoutParams();
+        ap.rightMargin=dp(12);
         TextView apps = button("所有应用", () -> showApps());
         header.addView(apps);
         TextView settings = button("设置", () -> showSettings());
@@ -177,14 +181,29 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("所有应用").setItems(labels,(d,n)->repository.launch(entries.get(n))).setNegativeButton("返回",null).show();
     }
     private void showSettings() {
-        new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{"壁纸与照片轮播","天气与定位","液态玻璃","电视系统设置","系统输入源","关于"},(d,n)->{
+        new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{"壁纸与照片轮播","天气与定位","液态玻璃","电视系统设置","系统输入源","AirPlay 接收","关于"},(d,n)->{
             if(n==0)showWallpaperSettings();
             if(n==1)showWeatherSettings();
             if(n==2)showGlassSettings();
             if(n==3)repository.openSettings();
             if(n==4)repository.openInputSettings();
-            if(n==5)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.3.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
+            if(n==5)showAirPlay();
+            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.4.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
         }).setNegativeButton("返回",null).show();
+    }
+    private void showAirPlay() {
+        Intent receiver=getPackageManager().getLeanbackLaunchIntentForPackage("io.github.jqssun.airplay");
+        if(receiver==null)receiver=getPackageManager().getLaunchIntentForPackage("io.github.jqssun.airplay");
+        final Intent launch=receiver;
+        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("AirPlay 接收")
+            .setMessage(launch==null ? "接收服务尚未安装，请按项目文档安装 AirPlay Server。" :
+                "在接收端开启服务后，同一局域网的 iPhone、iPad 或 Mac 可通过屏幕镜像连接。\n\n打开接收端可修改名称、启动或停止服务，设置开机启动和配对 PIN。返回桌面后服务可继续运行。\n\n不支持受 DRM 保护的视频；多房间同步音频不作兼容保证。")
+            .setNegativeButton("返回",null);
+        if(launch!=null)dialog.setPositiveButton("打开接收端",(d,n)->{
+            try { startActivity(launch); }
+            catch(ActivityNotFoundException|SecurityException e){Toast.makeText(this,"无法打开接收端，请检查安装状态",Toast.LENGTH_LONG).show();}
+        });
+        dialog.show();
     }
     private void showGlassSettings() {
         new AlertDialog.Builder(this).setTitle("液态玻璃")

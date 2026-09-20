@@ -1,3 +1,14 @@
+# v0.4.0 AirPlay 集成验证（2026-09-21）
+
+- Launcher `assembleDebug lintDebug` 成功，0 errors / 13 warnings；覆盖安装0.4.0，哔哩哔哩仍为首页第一项。
+- 安装未修改的上游 AirPlay Server 0.0.31，APK SHA-256、签名校验通过；Sony Android12 / armeabi-v7a 可运行。
+- 接收名称已设为 Aurora TV。Mac Bonjour 实际发现 `_airplay._tcp` 和 `_raop._tcp`；解析端口7000，TXT提供设备特征。
+- `scripts/check-airplay.py` 的 RTSP OPTIONS 返回200 OK及CSeq。`GET /server-info` 在此版本返回404，不用此旧端点作为健康检查。
+- 返回 Launcher 后前台服务仍运行；接收器 Stop / Start 已操作验证。首页 AirPlay及设置菜单可打开说明，再进入正确的接收Activity。
+- 执行整机重启：早期桌面出现时端口尚未监听，BOOT_COMPLETED 后服务自动启动，日志记录 Aurora TV 两种NSD注册；约一分钟内RTSP检查再次通过。默认桌面仍为 Aurora。
+- 保留原乐播服务，两个广播名称互不混淆；未改变HDMI或默认桌面配置。
+- **未验证实际Apple设备音视频流、音画同步、DRM、网络切换及长时间待机恢复。** Mac Bonjour发现与RTSP响应仅证实可发现和接收端协议入口工作。上游不支持多房间同步音频/Apple DRM视频。
+
 # v0.3.0 液态玻璃验证（2026-09-21）
 
 - `assembleDebug lintDebug` 成功，Lint 0 errors / 13 warnings；新增 ViewConstructor 警告来自仅代码创建、必须提供 WallpaperView 的组件，不用于 XML inflate。
