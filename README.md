@@ -62,10 +62,11 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 
 ## 源码结构
 
-应用包含六个 Java 源文件，使用原生 Android UI、网络及绘图 API，无第三方运行时依赖：
+应用包含七个 Java 源文件，使用原生 Android UI、网络及绘图 API，无第三方运行时依赖：
 
 | 文件 | 职责 |
 | --- | --- |
+| `LiquidGlassFrame.java` | 可切换液态玻璃、壁纸折射、高光和焦点动画 |
 | `MainActivity.java` | 首页、遥控器焦点、玻璃面板、设置与生命周期 |
 | `LauncherRepository.java` | 应用发现、哔哩哔哩优先、HDMI 与系统入口 |
 | `WeatherService.java` | IP 定位、城市搜索、天气请求、本机缓存与错误处理 |
@@ -86,3 +87,7 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 照片访问仅在打开选图功能时请求相应权限。选中图片在后台缩小至最大 1920×1080 的私有副本，不上传、不修改原图；清空照片只删除副本。城市设置、天气缓存及壁纸选择存于本机。不包含广告、账户系统或分析 SDK。电视上已安装应用的名称和图标属于各自权利人，运行时从设备读取。
 
 项目代码和原创壁纸采用 [MIT License](LICENSE)。仓库提供 GitHub 开源所需的基础文件；不代表已经创建远端仓库或发布版本。
+
+### 液态玻璃（v0.3.0）
+
+设置 → 液态玻璃 → 启用液态玻璃。默认开启，即时切换并保存；关闭恢复毛玻璃。天气、应用及 HDMI 卡片支持边缘折射、高光和焦点扫光，文字图标保持清晰。参见 [效果与兼容性说明](docs/LIQUID_GLASS.md)。

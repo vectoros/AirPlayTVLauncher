@@ -54,3 +54,7 @@ GitHub Actions 已配置构建、Lint 和调试 APK 上传。当前仅建立本�
 - [IPwho.is 定位 API](https://ipwhois.io/documentation)
 - [Open-Meteo 天气 API](https://open-meteo.com/en/docs)
 - [Open-Meteo 城市搜索 API](https://open-meteo.com/en/docs/geocoding-api)
+
+## v0.3.0 液态玻璃
+
+新增独立 LiquidGlassFrame，MainActivity 统一接入及保存开关。默认开启；详见 [LIQUID_GLASS.md](LIQUID_GLASS.md)。Git 分支 `feature/liquid-glass`。原生 API 31 背景模糊及 Canvas 折射近似，无新增库。
