@@ -8,9 +8,9 @@
 | --- | --- |
 | 保留 HDMI 入口 | 通过 `TvInputManager` 动态发现物理 HDMI，保留未连接端口，过滤重复的 CEC 子设备 |
 | 第一个应用是哔哩哔哩 TV | B站固定首位并默认聚焦，未安装时保留提示入口 |
-| 首页显示当天的天气 | 默认杭州，Open-Meteo 当前天气及当日高低温，支持城市搜索、缓存和更新时间 |
-| 动态壁纸 | 原创 Canvas 渐变山峦，三套配色，以 MIT 许可随项目开放源码 |
-| 代码简洁、便于开源 | 四个 Java 文件，使用 Android 原生 API，无第三方运行时依赖 |
+| 首页显示当天的天气 | 默认公网 IP 自动定位，支持手动城市、分模式缓存和更新时间 |
+| 动态壁纸 | 原创 Canvas 渐变山峦及本地照片轮播，三种过渡效果 |
+| 代码简洁、便于开源 | 六个 Java 文件，使用 Android 原生 API，无第三方运行时依赖 |
 
 ## 关键实现选择
 
@@ -20,6 +20,9 @@
 - 毛玻璃只模糊对应区域的壁纸，保持文字和图标清晰。Android 12 及以上使用 `RenderEffect`，旧版本显示半透明面板。
 - 壁纸最高 25fps；玻璃背景每秒重新采样一次以降低渲染开销。离开桌面停止动画。
 - 天气异步请求使用后台线程，结果回调主线程；请求序号阻止旧结果覆盖新城市，关闭服务时断开网络连接。
+- IP 定位通过 IPwho.is 完成，位置在内存中缓存 30 分钟，强制刷新或检测到网络变化时重新定位；旧版固定杭州配置升级为自动模式，自动和手动模式的天气缓存分开。
+- 照片选择页使用 MediaStore，兼容 Sony 仅有占位文件选择器的固件。PhotoStore 后台修正方向并缩放图片，全部成功才切换清单，失败保留原相册。最多选择 30 张，播放器持有当前及下一张图片；图片全部损坏时回退渐变背景。
+- 照片过渡期间玻璃背景采样加快至 100ms，其他时刻每秒一次。已提交绘制的位图由 GC 与 RenderNode 管理释放，避免手动 recycle 破坏缓存绘制。
 - 使用系统默认 HOME 机制进入桌面，无需禁用或卸载电视原有桌面。部署脚本和更改默认 HOME 的脚本分开，恢复脚本可恢复原组件。
 
 ## 本地 Git 工作流
@@ -48,5 +51,6 @@ GitHub Actions 已配置构建、Lint 和调试 APK 上传。当前仅建立本�
 
 - [Android RenderEffect](https://developer.android.com/reference/android/graphics/RenderEffect)
 - [Android TvContract](https://developer.android.com/reference/android/media/tv/TvContract)
+- [IPwho.is 定位 API](https://ipwhois.io/documentation)
 - [Open-Meteo 天气 API](https://open-meteo.com/en/docs)
 - [Open-Meteo 城市搜索 API](https://open-meteo.com/en/docs/geocoding-api)

@@ -23,7 +23,7 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Build and lint
-        run: ./gradlew --no-daemon assembleDebug lintDebug
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest lintDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:

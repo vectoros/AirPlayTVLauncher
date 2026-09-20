@@ -1,0 +1,142 @@
+package dev.aurora.tv;
+
+import android.app.Activity;
+import android.app.Instrumentation;
+import android.content.*;
+import android.graphics.*;
+import android.media.ExifInterface;
+import android.net.Uri;
+import android.os.*;
+import java.io.*;
+import java.security.MessageDigest;
+import java.util.*;
+import java.util.concurrent.*;
+
+/** Zero-dependency device regression suite. Never touches the user's album or preferences. */
+public final class RegressionInstrumentation extends Instrumentation {
+    private final StringBuilder report = new StringBuilder();
+    private IsolatedContext sandbox;
+    private int checks;
+
+    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    @Override public void onStart() {
+        Bundle results = new Bundle();
+        int result = Activity.RESULT_OK;
+        try {
+            sandbox = new IsolatedContext(getTargetContext());
+            testPhotos();
+            report.append("PASS: ").append(checks).append(" photo regression checks\n");
+        } catch (Throwable failure) {
+            result = Activity.RESULT_CANCELED;
+            StringWriter trace = new StringWriter(); failure.printStackTrace(new PrintWriter(trace));
+            report.append("FAIL: ").append(trace);
+        } finally {
+            if (sandbox != null) sandbox.cleanup();
+        }
+        results.putString("stream", "\n" + report);
+        results.putInt("checks", checks);
+        finish(result, results);
+    }
+
+    private void testPhotos() throws Exception {
+        File wide = original("wide.jpg", 2400, 1400, false);
+        File turned = original("turned.jpg", 400, 200, true);
+        byte[] wideHash = hash(wide), turnedHash = hash(turned);
+        Uri wideUri = Uri.fromFile(wide), turnedUri = Uri.fromFile(turned);
+        Outcome imported = importPhotos(Arrays.asList(wideUri, turnedUri, wideUri));
+        expect(imported.error == null && imported.count == 2, "Multi-photo import deduplicates URIs");
+        List<File> files = PhotoStore.listFiles(sandbox);
+        expect(files.size() == 2 && imported.mainThread, "Import callback is on main thread and two copies are listed");
+        Bitmap wideCopy = BitmapFactory.decodeFile(files.get(0).getAbsolutePath());
+        expect(wideCopy != null && wideCopy.getWidth() <= 1920 && wideCopy.getHeight() <= 1080 &&
+                Math.abs((float) wideCopy.getWidth() / wideCopy.getHeight() - 2400f / 1400) < .01,
+                "Large photo stays within 1920x1080 and preserves aspect ratio");
+        wideCopy.recycle();
+        Bitmap turnedCopy = BitmapFactory.decodeFile(files.get(1).getAbsolutePath());
+        expect(turnedCopy != null && turnedCopy.getWidth() == 200 && turnedCopy.getHeight() == 400,
+                "Exif rotation normalizes dimensions without upscaling");
+        int top = turnedCopy.getPixel(100, 60), bottom = turnedCopy.getPixel(100, 340);
+        expect(Color.red(top) > 200 && Color.blue(top) < 50 && Color.blue(bottom) > 200 && Color.red(bottom) < 50,
+                "Exif 90-degree rotation normalizes actual pixel orientation");
+        turnedCopy.recycle();
+
+        File broken = new File(sandbox.root, "broken.jpg");
+        try (FileOutputStream out = new FileOutputStream(broken)) { out.write(new byte[]{1, 2, 3, 4}); }
+        Outcome failed = importPhotos(Arrays.asList(wideUri, Uri.fromFile(broken)));
+        expect(failed.error != null && files.equals(PhotoStore.listFiles(sandbox)), "Corrupt batch preserves the previous album");
+        File[] onDisk = new File(sandbox.getFilesDir(), "wallpapers").listFiles();
+        expect(onDisk != null && onDisk.length == 2 && Arrays.asList(onDisk).containsAll(files),
+                "Failed batch deletes only its temporary copies");
+        Outcome empty = importPhotos(Collections.emptyList());
+        expect(empty.error == null && empty.count == 2 && files.equals(PhotoStore.listFiles(sandbox)),
+                "Empty selection leaves previous album unchanged");
+        List<Uri> tooMany = new ArrayList<>();
+        for (int i = 0; i < 31; i++) tooMany.add(Uri.fromFile(new File(sandbox.root, "unused-" + i + ".jpg")));
+        expect(importPhotos(tooMany).error != null && files.equals(PhotoStore.listFiles(sandbox)),
+                "More than 30 unique photos are rejected without changing album");
+        Outcome replacement = importPhotos(Collections.singletonList(turnedUri));
+        expect(replacement.error == null && replacement.count == 1 && !files.get(0).exists() && !files.get(1).exists(),
+                "Successful replacement removes previous app-owned copies");
+        PhotoStore.clear(sandbox);
+        expect(PhotoStore.listFiles(sandbox).isEmpty(), "Clear removes album metadata");
+        onDisk = new File(sandbox.getFilesDir(), "wallpapers").listFiles();
+        expect(onDisk != null && onDisk.length == 0 && Arrays.equals(wideHash, hash(wide)) && Arrays.equals(turnedHash, hash(turned)),
+                "Clear removes app copies and leaves original photo bytes unchanged");
+    }
+
+    private Outcome importPhotos(List<Uri> uris) throws InterruptedException {
+        Outcome result = new Outcome();
+        CountDownLatch latch = new CountDownLatch(1);
+        PhotoStore.importSelection(sandbox, uris, (count, error) -> {
+            result.count = count; result.error = error;
+            result.mainThread = Looper.myLooper() == Looper.getMainLooper(); latch.countDown();
+        });
+        if (!latch.await(30, TimeUnit.SECONDS)) throw new AssertionError("Import callback timed out");
+        return result;
+    }
+    private File original(String name, int width, int height, boolean rotate) throws IOException {
+        File file = new File(sandbox.root, name);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap); canvas.drawColor(Color.BLUE);
+        Paint paint = new Paint(); paint.setColor(Color.RED); canvas.drawRect(0, 0, width / 2f, height, paint);
+        try (FileOutputStream out = new FileOutputStream(file)) { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out); }
+        finally { bitmap.recycle(); }
+        if (rotate) {
+            ExifInterface exif = new ExifInterface(file.getAbsolutePath());
+            exif.setAttribute(ExifInterface.TAG_ORIENTATION, String.valueOf(ExifInterface.ORIENTATION_ROTATE_90)); exif.saveAttributes();
+        }
+        return file;
+    }
+    private void expect(boolean condition, String description) {
+        if (!condition) throw new AssertionError(description);
+        checks++; report.append("PASS ").append(description).append('\n');
+    }
+    private byte[] hash(File file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream input = new FileInputStream(file)) {
+            byte[] buffer = new byte[8192]; int read;
+            while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+        }
+        return digest.digest();
+    }
+    private static final class Outcome { int count; String error; boolean mainThread; }
+    private static final class IsolatedContext extends ContextWrapper {
+        final File root;
+        final String preferencePrefix = "photo-regression-" + UUID.randomUUID() + "-";
+        IsolatedContext(Context base) throws IOException {
+            super(base); root = new File(base.getCacheDir(), preferencePrefix);
+            if (!getFilesDir().mkdirs()) throw new IOException("Cannot create isolated photo test directory");
+        }
+        @Override public Context getApplicationContext() { return this; }
+        @Override public File getFilesDir() { return new File(root, "files"); }
+        @Override public android.content.SharedPreferences getSharedPreferences(String name, int mode) {
+            return getBaseContext().getSharedPreferences(preferencePrefix + name, mode);
+        }
+        void cleanup() { getBaseContext().deleteSharedPreferences(preferencePrefix + "photos"); delete(root); }
+        private void delete(File file) {
+            File[] children = file.listFiles();
+            if (children != null) for (File child : children) delete(child);
+            file.delete();
+        }
+    }
+}
