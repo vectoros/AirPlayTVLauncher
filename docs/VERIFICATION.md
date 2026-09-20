@@ -1,3 +1,13 @@
+# v0.3.0 液态玻璃验证（2026-09-21）
+
+- `assembleDebug lintDebug` 成功，Lint 0 errors / 13 warnings；新增 ViewConstructor 警告来自仅代码创建、必须提供 WallpaperView 的组件，不用于 XML inflate。
+- Sony BRAVIA Android 12 / API 31 安装覆盖成功，版本 0.3.0。
+- 通过遥控器菜单和方向/确认键关闭、开启液态玻璃；截图确认旧毛玻璃/粉色首卡恢复及新高光边缘出现。
+- 关闭后 force-stop 冷启动，偏好仍为 false，截图验证关闭样式；最终恢复 true。
+- 连续方向键经过应用、天气及 HDMI，短测 224 帧：P50 14ms、P90 32ms、P95 34ms，Janky 12/224（5.36%），无漏 Vsync。此为密集按键短测，不是稳定60fps保证，也不是照片轮播长期负载测试。
+- 检查 AndroidRuntime 错误日志无输出。材质动画仅焦点触发，暂停/离屏/销毁均取消。
+- 本次未重复整机重启及 HDMI 信号播放测试；已有验证见下文。新增效果在照片轮播下未单独做性能基准。
+
 # 真机验证记录
 
 ## 0.2.0：IP 天气与照片轮播

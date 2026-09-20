@@ -23,11 +23,12 @@ public final class MainActivity extends Activity {
     private LinearLayout appRow, inputRow;
     private TextView clock, date, weatherText, paletteText;
     private View firstApp;
-    private final java.util.List<View> glassSurfaces = new ArrayList<>();
+    private final java.util.List<LiquidGlassFrame> glassSurfaces = new ArrayList<>();
     private TvInputManager inputManager;
     private long lastGlassFrame;
     private static final int PICK_PHOTOS = 41;
     private boolean importingPhotos;
+    private boolean liquidGlass;
     private final TvInputManager.TvInputCallback inputCallback = new TvInputManager.TvInputCallback() {
         @Override public void onInputStateChanged(String id, int state) { populate(); }
         @Override public void onInputAdded(String id) { populate(); }
@@ -49,6 +50,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().getDecorView().setSystemUiVisibility(5894 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+        liquidGlass = getPreferences(MODE_PRIVATE).getBoolean("liquid_glass", true);
         repository = new LauncherRepository(this);
         weather = new WeatherService(this);
         FrameLayout root = new FrameLayout(this);
@@ -59,7 +61,7 @@ public final class MainActivity extends Activity {
             long now = SystemClock.uptimeMillis();
             if (now - lastGlassFrame < (wallpaper.isTransitioning() ? 100 : 1000)) return;
             lastGlassFrame = now;
-            for (View glass : glassSurfaces) glass.invalidate();
+            for (LiquidGlassFrame glass : glassSurfaces) glass.refreshBackdrop();
             if(paletteText!=null)updateWallpaperLabel();
         });
         root.addView(wallpaper, new FrameLayout.LayoutParams(-1, -1));
@@ -89,7 +91,7 @@ public final class MainActivity extends Activity {
         timeBlock.addView(clock, new LinearLayout.LayoutParams(-2, dp(83)));
         date = text("", 16, 0xffc9dbe2); timeBlock.addView(date);
         hero.addView(timeBlock, new LinearLayout.LayoutParams(0, -2, 1));
-        GlassFrame weatherCard = new GlassFrame();
+        LiquidGlassFrame weatherCard = newGlass();
         weatherText = text("今日天气\n正在根据 IP 定位…", 18, Color.WHITE);
         weatherText.setPadding(dp(22), dp(15), dp(22), dp(15));
         weatherText.setLineSpacing(dp(5), 1);
@@ -120,13 +122,16 @@ public final class MainActivity extends Activity {
     }
 
     private void populate() {
-        if (glassSurfaces.size() > 1) glassSurfaces.subList(1, glassSurfaces.size()).clear();
+        if (glassSurfaces.size() > 1) {
+            for (int i=1; i<glassSurfaces.size(); i++) glassSurfaces.get(i).dispose();
+            glassSurfaces.subList(1, glassSurfaces.size()).clear();
+        }
         appRow.removeAllViews(); inputRow.removeAllViews();
         java.util.List<LauncherRepository.AppEntry> entries = repository.apps();
         for (int i=0; i<Math.min(entries.size(), 6); i++) {
             LauncherRepository.AppEntry app = entries.get(i);
             LinearLayout wrap = column(); wrap.setGravity(Gravity.CENTER);
-            FrameLayout card = app.isBilibili ? new FrameLayout(this) : new GlassFrame();
+            FrameLayout card = app.isBilibili && !liquidGlass ? new FrameLayout(this) : newGlass();
             card.setBackground(shape(app.isBilibili ? 0xffec71a3 : 0xb52d4056, 14, 0x33ffffff));
             card.setClipToOutline(true);
             if (app.icon != null) {
@@ -149,7 +154,7 @@ public final class MainActivity extends Activity {
         }
         java.util.List<LauncherRepository.InputEntry> inputs=repository.hdmiInputs();
         for(LauncherRepository.InputEntry input: inputs) {
-            GlassFrame card=new GlassFrame();
+            LiquidGlassFrame card=newGlass();
             TextView label=text("▱  "+input.label.replaceAll("\\s*\\(.*?\\)", "")+"   ·  "+(input.connected?"已连接":"未连接"),14,Color.WHITE);
             label.setSingleLine(true);
             label.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -172,13 +177,29 @@ public final class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("所有应用").setItems(labels,(d,n)->repository.launch(entries.get(n))).setNegativeButton("返回",null).show();
     }
     private void showSettings() {
-        new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{"壁纸与照片轮播","天气与定位","电视系统设置","系统输入源","关于"},(d,n)->{
+        new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{"壁纸与照片轮播","天气与定位","液态玻璃","电视系统设置","系统输入源","关于"},(d,n)->{
             if(n==0)showWallpaperSettings();
             if(n==1)showWeatherSettings();
-            if(n==2)repository.openSettings();
-            if(n==3)repository.openInputSettings();
-            if(n==4)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.2.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
+            if(n==2)showGlassSettings();
+            if(n==3)repository.openSettings();
+            if(n==4)repository.openInputSettings();
+            if(n==5)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.3.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
         }).setNegativeButton("返回",null).show();
+    }
+    private void showGlassSettings() {
+        new AlertDialog.Builder(this).setTitle("液态玻璃")
+            .setMultiChoiceItems(new String[]{"启用液态玻璃"},new boolean[]{liquidGlass},(dialog,index,checked)->{
+                liquidGlass=checked;
+                getPreferences(MODE_PRIVATE).edit().putBoolean("liquid_glass",checked).apply();
+                for(LiquidGlassFrame glass:glassSurfaces)glass.setLiquidEnabled(checked);
+                populate();
+            }).setPositiveButton("完成",null).show();
+    }
+    private LiquidGlassFrame newGlass() {
+        LiquidGlassFrame glass=new LiquidGlassFrame(this,wallpaper);
+        glass.setLiquidEnabled(liquidGlass);
+        glassSurfaces.add(glass);
+        return glass;
     }
     private void updateWallpaperLabel() {
         String label = wallpaper.isPhotoFallback() ? "照片暂不可用 · " + wallpaper.getPaletteName() : wallpaper.isUsingPhotos() ? "照片轮播 · " + wallpaper.getPhotoCount() + " 张" : wallpaper.getPaletteName()+"  /  动态壁纸";
@@ -263,9 +284,9 @@ public final class MainActivity extends Activity {
             weatherText.setTextSize(15);
         });
     }
-    @Override protected void onResume(){super.onResume();populate();wallpaper.setRunning(true);handler.post(tick);handler.post(weatherTick);if(inputManager!=null)inputManager.registerCallback(inputCallback,handler);}
-    @Override protected void onPause(){handler.removeCallbacks(tick);handler.removeCallbacks(weatherTick);wallpaper.setRunning(false);if(inputManager!=null)inputManager.unregisterCallback(inputCallback);super.onPause();}
-    @Override protected void onDestroy(){weather.close();wallpaper.close();super.onDestroy();}
+    @Override protected void onResume(){super.onResume();populate();for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(true);wallpaper.setRunning(true);handler.post(tick);handler.post(weatherTick);if(inputManager!=null)inputManager.registerCallback(inputCallback,handler);}
+    @Override protected void onPause(){handler.removeCallbacks(tick);handler.removeCallbacks(weatherTick);wallpaper.setRunning(false);for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(false);if(inputManager!=null)inputManager.unregisterCallback(inputCallback);super.onPause();}
+    @Override protected void onDestroy(){for(LiquidGlassFrame glass:glassSurfaces)glass.dispose();weather.close();wallpaper.close();super.onDestroy();}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);populate();}
     @Override public void onBackPressed(){if(firstApp!=null)firstApp.requestFocus();}
     @Override public boolean onKeyUp(int key,KeyEvent event){if(key==KeyEvent.KEYCODE_MENU){showSettings();return true;}return super.onKeyUp(key,event);}
@@ -281,25 +302,8 @@ public final class MainActivity extends Activity {
         v.setOnClickListener(view->action.run());
         v.setOnFocusChangeListener((view,focused)->{
             view.animate().scaleX(focused?1.055f:1f).scaleY(focused?1.055f:1f).translationZ(focused?dp(10):0).setDuration(180).start();
-            view.setForeground(focused?shape(0x08ffffff,14,0xddffffff):null);
+            if(view instanceof LiquidGlassFrame)((LiquidGlassFrame)view).setGlassFocused(focused);
+            else view.setForeground(focused?shape(0x08ffffff,14,0xddffffff):null);
         });
-    }
-    /** Blur only a matched wallpaper sample; text and icons remain crisp. */
-    private final class GlassFrame extends FrameLayout {
-        GlassFrame(){super(MainActivity.this);
-            setBackground(shape(0x303a5369,16,0x45ffffff));setClipToOutline(true);
-            View backdrop=new View(MainActivity.this){
-                private final int[] origin=new int[2], scene=new int[2];
-                @Override protected void onDraw(Canvas c){
-                    getLocationOnScreen(origin);wallpaper.getLocationOnScreen(scene);
-                    c.save();c.translate(scene[0]-origin[0],scene[1]-origin[1]);
-                    wallpaper.drawScene(c,wallpaper.getWidth(),wallpaper.getHeight());c.restore();
-                    c.drawColor(0x55425769);
-                }
-            };
-            if(Build.VERSION.SDK_INT>=31)backdrop.setRenderEffect(RenderEffect.createBlurEffect(dp(22),dp(22),Shader.TileMode.CLAMP));
-            addView(backdrop,new FrameLayout.LayoutParams(-1,-1));
-            glassSurfaces.add(backdrop);
-        }
     }
 }
