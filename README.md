@@ -62,12 +62,14 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 
 ## 源码结构
 
-应用包含七个 Java 源文件，使用原生 Android UI、网络及绘图 API，无第三方运行时依赖：
+应用包含九个 Java 源文件，使用原生 Android UI、网络及绘图 API，无第三方运行时依赖：
 
 | 文件 | 职责 |
 | --- | --- |
 | `LiquidGlassFrame.java` | 可切换液态玻璃、壁纸折射、高光和焦点动画 |
 | `MainActivity.java` | 首页、遥控器焦点、玻璃面板、设置与生命周期 |
+| `AppsDrawer.java` | 下键展开的应用网格与HDMI快捷入口 |
+| `AirPlayCompanion.java` | 可见桌面启动独立常驻接收服务 |
 | `LauncherRepository.java` | 应用发现、哔哩哔哩优先、HDMI 与系统入口 |
 | `WeatherService.java` | IP 定位、城市搜索、天气请求、本机缓存与错误处理 |
 | `WallpaperView.java` | 原创动态背景、照片轮播、过渡效果与动画调度 |
@@ -95,3 +97,7 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 ### AirPlay 接收（v0.4.0）
 
 首页 AirPlay 或设置 → AirPlay 接收，打开独立开源接收端。支持局域网发现、后台运行和开机启动。安装、GPL 来源、使用及兼容性限制见 [AIRPLAY.md](docs/AIRPLAY.md)。
+
+### 自动接收与应用抽屉（v0.5.0）
+
+首页按下键滑出全部应用网格，返回收起；HDMI仍可从抽屉顶部进入。Launcher前台启动时直接启动Aurora AirPlay后台服务，无需进入接收端。源补丁及安装说明见 [AIRPLAY.md](docs/AIRPLAY.md)。

@@ -62,3 +62,9 @@ GitHub Actions 已配置构建、Lint 和调试 APK 上传。当前仅建立本�
 ## v0.4.0 AirPlay伴随服务
 
 复用上游Android移植，以独立APK部署；Launcher仅用导出的Activity入口，不跨包操作私有服务。Git子模块固定GPL来源版本；安装脚本固定二进制摘要，文档区分协议发现和实播验证。见 [AIRPLAY.md](AIRPLAY.md)。
+
+## v0.5.0 常驻接收及应用抽屉
+
+用AppsDrawer独立Dialog限制遥控器焦点，首页DPAD_DOWN打开；包含HDMI快捷入口，返回恢复原焦点。AirPlayCompanion通过签名受保护的导出Service调用，onResume和onNewIntent均确保服务启动。接收端补丁保留GPL许可及上游子模块固定版本，未混入Launcher MIT代码。
+
+开发APK构建只重编译修改的Kotlin/Java/资源，原生协议库来自固定校验的官方APK；可选完全源码编译流程见patches/README.md。两个APK同签名是跨包控制的必要条件。
