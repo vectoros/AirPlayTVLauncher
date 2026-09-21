@@ -1,0 +1,242 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 2604452..353a282 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,9 @@ val localProps = Properties().apply {
+     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+ }
+ 
+-val allAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
++val prebuiltNative = providers.gradleProperty("prebuiltNative").orNull == "true"
++
++val allAbis = if (prebuiltNative) listOf("armeabi-v7a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+ 
+ android {
+     namespace = "io.github.jqssun.airplay"
+@@ -31,13 +33,13 @@ android {
+     }
+ 
+     defaultConfig {
+-        applicationId = "io.github.jqssun.airplay"
++        applicationId = "dev.aurora.airplay"
+         minSdk = 24
+         targetSdk = 36
+         versionCode = 31
+-        versionName = "0.0.31"
++        versionName = "0.0.31-aurora.1"
+ 
+-        externalNativeBuild {
++        if (!prebuiltNative) externalNativeBuild {
+             cmake {
+                 arguments += "-DANDROID_STL=c++_shared"
+                 arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+@@ -45,7 +47,7 @@ android {
+         }
+     }
+ 
+-    externalNativeBuild {
++    if (!prebuiltNative) externalNativeBuild {
+         cmake {
+             path = file("src/main/cpp/CMakeLists.txt")
+         }
+@@ -91,7 +93,7 @@ android {
+ 
+     buildFeatures {
+         compose = true
+-        prefab = true
++        prefab = !prebuiltNative
+     }
+ }
+ 
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index f42c86f..30287df 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -1,6 +1,10 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
++    <!-- Aurora launcher and receiver must be signed with the same key. -->
++    <permission android:name="dev.aurora.tv.permission.CONTROL_AIRPLAY"
++        android:protectionLevel="signature" />
++    <uses-permission android:name="dev.aurora.tv.permission.CONTROL_AIRPLAY" />
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+@@ -48,7 +52,9 @@
+         <service
+             android:name=".service.AirPlayService"
+             android:foregroundServiceType="connectedDevice|mediaPlayback"
+-            android:exported="false" />
++            android:stopWithTask="false"
++            android:permission="dev.aurora.tv.permission.CONTROL_AIRPLAY"
++            android:exported="true" />
+ 
+         <receiver
+             android:name=".BootReceiver"
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 9a17a5d..c73f293 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">AirPlay Server</string>
++    <string name="app_name">Aurora AirPlay</string>
+ 
+     <!-- Notification -->
+     <string name="notification_channel">AirPlay Service</string>
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt b/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt
+index f4a643e..d17de2e 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt
+@@ -7,7 +7,7 @@ object Prefs {
+     const val NAME = "settings"
+     const val AUTO = "auto"; const val ON = "on"; const val OFF = "off"
+ 
+-    const val SERVER_NAME = "server_name"; const val DEF_SERVER_NAME = "Android AirPlay"
++    const val SERVER_NAME = "server_name"; const val DEF_SERVER_NAME = "Aurora TV"
+     const val FALLBACK_MAC_ADDRESS = "fallback_mac_address"
+     const val SERVER_PORT = "server_port"; const val DEF_SERVER_PORT = 7000
+     const val AUTO_START = "auto_start"; const val DEF_AUTO_START = true
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt b/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt
+index 9390300..6fb91d0 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt
+@@ -72,7 +72,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+     private var nativeHandle = 0L
+     private var nsdManager: NsdServiceManager? = null
+     private var wakeLock: PowerManager.WakeLock? = null
+-    private var foregroundStarted = false
++    private val retryStart = Runnable { startResidentServer() }
+     private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
+ 
+     val videoRenderer = VideoRenderer(this)
+@@ -329,14 +329,30 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+         }
+     }
+ 
++    // Aurora: a launcher start and a system sticky restart take the same path.
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+-        if (intent?.action == ACTION_START_SERVER) {
+-            promoteToForeground()
++        super.onStartCommand(intent, flags, startId)
++        if (intent?.action != null && intent.action != ACTION_START_SERVER) {
++            return if (_serverState.value == ServerState.RUNNING) START_STICKY else START_NOT_STICKY
++        }
++        startResidentServer()
++        return START_STICKY
++    }
++
++    private fun startResidentServer() {
++        _mainHandler.removeCallbacks(retryStart)
++        // Promote even before native initialization; failures must not violate the FGS deadline.
++        promoteToForeground()
++        try {
+             val name = prefs.getString(Prefs.SERVER_NAME, Prefs.DEF_SERVER_NAME) ?: Prefs.DEF_SERVER_NAME
+             startServer(name, ensureServiceStarted = false)
+-            if (_serverState.value != ServerState.RUNNING) stopSelf(startId)
++        } catch (e: Exception) {
++            Log.e(TAG, "Receiver start failed; retrying in 30 seconds", e)
++            _failStart()
++        }
++        if (_serverState.value != ServerState.RUNNING) {
++            _mainHandler.postDelayed(retryStart, 30_000L)
+         }
+-        return START_NOT_STICKY
+     }
+ 
+     fun startServer(name: String) {
+@@ -482,13 +498,16 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+         wakeLock?.release()
+         wakeLock = null
+         _serverState.value = ServerState.ERROR
+-        if (foregroundStarted) {
+-            stopForeground(STOP_FOREGROUND_REMOVE)
+-            foregroundStarted = false
+-        }
++        // Keep the foreground notification while a resident start is retried.
+     }
+ 
+     fun stopServer() {
++        releaseServer()
++        stopSelf() // An explicit user stop must not trigger a sticky restart.
++    }
++
++    private fun releaseServer() {
++        _mainHandler.removeCallbacks(retryStart)
+         audioRenderer.detachEngine()
+         if (nativeHandle != 0L) {
+             NativeBridge.nativeStop(nativeHandle)
+@@ -517,8 +536,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+         _connectionCount.value = 0
+         _refreshDacpPlayer()
+         stopForeground(STOP_FOREGROUND_REMOVE)
+-        foregroundStarted = false
+-        stopSelf()
+         log("Server stopped")
+     }
+ 
+@@ -579,7 +596,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+     }
+ 
+     override fun onDestroy() {
+-        stopServer()
++        releaseServer()
++        _mainHandler.removeCallbacksAndMessages(null)
+         dacpPlayer.release()
+         mediaReceiver?.let {
+             try { unregisterReceiver(it) } catch (_: Exception) {}
+@@ -607,6 +625,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+     }
+ 
+     override fun onVideoPlay(location: String, startPositionSeconds: Float) {
++        if (shouldLaunchOnConnect()) launchMainActivity()
+         _videoLocation.value = location
+         _videoPlaySeq.value++
+         _videoPollSuppressed = false
+@@ -646,6 +665,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+     override fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float) {
+         clearPin()
+         if (w > 0 && h > 0) {
++            if (!_mirroringActive.value && shouldLaunchOnConnect()) launchMainActivity()
+             _videoAspect.value = w / h
+             _videoResolution.value = "${w.toInt()}x${h.toInt()}"
+             videoRenderer.setResolution(w.toInt(), h.toInt())
+@@ -711,15 +731,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+     }
+ 
+     override fun onConnectionInit() {
+-        val firstConnection = _connectionCount.value == 0
+         _connectionCount.value++
++        // TCP probes and mDNS clients are not authenticated playback sessions.
+         log("Client connected (${_connectionCount.value})")
+-        if (!firstConnection) return
+-        // conn_init is only a tcp pre-auth signal. pin-required sessions must wait for
+-        // onDisplayPin, otherwise the server ui can move before the client pin is current
+-        if (requiresPin()) return
+-        if (!shouldLaunchOnConnect()) return
+-        launchMainActivity()
+     }
+ 
+     override fun onConnectionDestroy() {
+@@ -760,6 +774,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+         // a new pin is the sync point with the client prompt: show every new value immediately
+         if (_lastPin == pin) return
+         _lastPin = pin
++        if (shouldLaunchOnConnect()) launchMainActivity()
+         pinCallback?.invoke(pin)
+         _updateMediaNotification()
+     }
+@@ -1020,11 +1035,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+             buildNotification(),
+             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+         )
+-        foregroundStarted = true
+-    }
+-
+-    private fun requiresPin(): Boolean {
+-        return prefs.getBoolean(Prefs.REQUIRE_PIN, Prefs.DEF_REQUIRE_PIN)
+     }
+ 
+     private fun shouldLaunchOnConnect(): Boolean {

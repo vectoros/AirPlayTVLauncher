@@ -1,3 +1,18 @@
+# v0.5.0 常驻接收、应用抽屉及设备清理（2026-09-21）
+
+- Launcher assembleDebug / lintDebug成功（0 errors / 14 warnings）。Aurora AirPlay修改源码构建成功，并从固定上游+补丁通过scripts/build-airplay.sh重新生成成功；产物只含armeabi-v7a协议库，复用四个已校验上游native二进制。
+- Projectivy Launcher com.spocky.projengmenu完整卸载；乐播com.hpplay.happyplay.aw移除更新并对用户0卸载，系统只读底包保留。卸载前APK和元数据备份至本地artifacts/uninstall-backup。默认HOME在卸载前后都解析为dev.aurora.tv/.MainActivity。
+- 首页下键打开6列网格抽屉，首焦点为哔哩哔哩；连续下键滚动到NewTV极光，返回后焦点恢复哔哩哔哩。HDMI入口保留在抽屉上方。
+- 首次安装dev.aurora.airplay后，仅启动Launcher；dumpsys显示recentCallingPackage=dev.aurora.tv，isForeground=true、stopIfKilled=false，RTSP检查通过，接收Activity从未手动打开。
+- Mac Bonjour发现Aurora TV，已移除乐播广播；原上游io.github.jqssun.airplay在新服务通过检查后卸载，避免重复接收器。
+- shell直接启动受保护服务返回Requires permission，Launcher同签名调用成功。
+- 使用am crash模拟接收器崩溃：PID30630消失，系统安排约1秒后重建，恢复为30808，RTSP再次通过；期间Launcher始终前台。run-as kill被电视SELinux拒绝，因此未把它计作终止测试。日志中shell诱发的崩溃是预期测试事件。
+- force-stop接收器后，在已前台Launcher送入新HOME Activity Intent，触发onNewIntent再次启动服务，RTSP通过。
+- 纯RTSP探测后mResumedActivity仍为Launcher，不再出现旧版抢屏。
+- 整机重启后未打开接收器界面，Launcher自动启动接收服务（recentCallingPackage=dev.aurora.tv），RTSP再次通过；默认HOME仍是Aurora。
+- 重启后在抽屉按上键定位HDMI1、确认进入Sony电视输入Activity，Home返回Aurora；仅验证切换入口，无HDMI信号源播放。
+- 实际Apple音画会话、网络切换、长时间待机恢复仍未验证；常驻采用Android前台服务+START_STICKY，不保证系统永不杀进程。
+
 # v0.4.0 AirPlay 集成验证（2026-09-21）
 
 - Launcher `assembleDebug lintDebug` 成功，0 errors / 13 warnings；覆盖安装0.4.0，哔哩哔哩仍为首页第一项。

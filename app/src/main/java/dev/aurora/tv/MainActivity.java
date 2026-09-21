@@ -23,6 +23,7 @@ public final class MainActivity extends Activity {
     private LinearLayout appRow, inputRow;
     private TextView clock, date, weatherText, paletteText;
     private View firstApp;
+    private AppsDrawer appsDrawer;
     private final java.util.List<LiquidGlassFrame> glassSurfaces = new ArrayList<>();
     private TvInputManager inputManager;
     private long lastGlassFrame;
@@ -104,7 +105,7 @@ public final class MainActivity extends Activity {
         hero.addView(weatherCard, new LinearLayout.LayoutParams(dp(244), dp(118)));
         page.addView(hero, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        TextView appHeading = text("常用应用", 16, 0xffe4edf1);
+        TextView appHeading = text("常用应用    ·    ↓ 所有应用", 16, 0xffe4edf1);
         page.addView(appHeading, new LinearLayout.LayoutParams(-1, dp(30)));
         HorizontalScrollView appScroll = new HorizontalScrollView(this);
         appScroll.setClipChildren(false); appScroll.setClipToPadding(false); appScroll.setHorizontalScrollBarEnabled(false);
@@ -175,10 +176,15 @@ public final class MainActivity extends Activity {
     }
 
     private void showApps() {
-        java.util.List<LauncherRepository.AppEntry> entries=repository.apps();
-        String[] labels=new String[entries.size()];
-        for(int i=0;i<labels.length;i++) labels[i]=entries.get(i).label;
-        new AlertDialog.Builder(this).setTitle("所有应用").setItems(labels,(d,n)->repository.launch(entries.get(n))).setNegativeButton("返回",null).show();
+        if(appsDrawer!=null)return;
+        View previous=getCurrentFocus();
+        appsDrawer=new AppsDrawer(this,repository);
+        appsDrawer.setOnDismissListener(dialog->{
+            appsDrawer=null;
+            if(previous!=null && previous.isAttachedToWindow())previous.requestFocus();
+            else if(firstApp!=null)firstApp.requestFocus();
+        });
+        appsDrawer.show();
     }
     private void showSettings() {
         new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{"壁纸与照片轮播","天气与定位","液态玻璃","电视系统设置","系统输入源","AirPlay 接收","关于"},(d,n)->{
@@ -188,16 +194,16 @@ public final class MainActivity extends Activity {
             if(n==3)repository.openSettings();
             if(n==4)repository.openInputSettings();
             if(n==5)showAirPlay();
-            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.4.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
+            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.5.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
         }).setNegativeButton("返回",null).show();
     }
     private void showAirPlay() {
-        Intent receiver=getPackageManager().getLeanbackLaunchIntentForPackage("io.github.jqssun.airplay");
-        if(receiver==null)receiver=getPackageManager().getLaunchIntentForPackage("io.github.jqssun.airplay");
+        Intent receiver=getPackageManager().getLeanbackLaunchIntentForPackage(AirPlayCompanion.PACKAGE);
+        if(receiver==null)receiver=getPackageManager().getLaunchIntentForPackage(AirPlayCompanion.PACKAGE);
         final Intent launch=receiver;
         AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("AirPlay 接收")
             .setMessage(launch==null ? "接收服务尚未安装，请按项目文档安装 AirPlay Server。" :
-                "在接收端开启服务后，同一局域网的 iPhone、iPad 或 Mac 可通过屏幕镜像连接。\n\n打开接收端可修改名称、启动或停止服务，设置开机启动和配对 PIN。返回桌面后服务可继续运行。\n\n不支持受 DRM 保护的视频；多房间同步音频不作兼容保证。")
+                "桌面启动时会自动开启接收服务，同一局域网的 iPhone、iPad 或 Mac 可通过屏幕镜像连接。\n\n打开接收端可修改名称和配对 PIN。服务后台常驻，返回桌面会确保服务启动。\n\n不支持受 DRM 保护的视频；多房间同步音频不作兼容保证。")
             .setNegativeButton("返回",null);
         if(launch!=null)dialog.setPositiveButton("打开接收端",(d,n)->{
             try { startActivity(launch); }
@@ -303,11 +309,18 @@ public final class MainActivity extends Activity {
             weatherText.setTextSize(15);
         });
     }
-    @Override protected void onResume(){super.onResume();populate();for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(true);wallpaper.setRunning(true);handler.post(tick);handler.post(weatherTick);if(inputManager!=null)inputManager.registerCallback(inputCallback,handler);}
+    @Override protected void onResume(){super.onResume();AirPlayCompanion.ensureStarted(this);populate();for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(true);wallpaper.setRunning(true);handler.post(tick);handler.post(weatherTick);if(inputManager!=null)inputManager.registerCallback(inputCallback,handler);}
     @Override protected void onPause(){handler.removeCallbacks(tick);handler.removeCallbacks(weatherTick);wallpaper.setRunning(false);for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(false);if(inputManager!=null)inputManager.unregisterCallback(inputCallback);super.onPause();}
-    @Override protected void onDestroy(){for(LiquidGlassFrame glass:glassSurfaces)glass.dispose();weather.close();wallpaper.close();super.onDestroy();}
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);populate();}
+    @Override protected void onDestroy(){if(appsDrawer!=null)appsDrawer.dismissImmediately();for(LiquidGlassFrame glass:glassSurfaces)glass.dispose();weather.close();wallpaper.close();super.onDestroy();}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);AirPlayCompanion.ensureStarted(this);if(appsDrawer!=null)appsDrawer.dismissImmediately();populate();}
     @Override public void onBackPressed(){if(firstApp!=null)firstApp.requestFocus();}
+    @Override public boolean dispatchKeyEvent(KeyEvent event){
+        if(event.getKeyCode()==KeyEvent.KEYCODE_DPAD_DOWN && event.getAction()==KeyEvent.ACTION_DOWN){
+            if(event.getRepeatCount()==0)showApps();
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
     @Override public boolean onKeyUp(int key,KeyEvent event){if(key==KeyEvent.KEYCODE_MENU){showSettings();return true;}return super.onKeyUp(key,event);}
 
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
