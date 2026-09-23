@@ -4,7 +4,7 @@
 
 ![Sony 电视真机首页](docs/images/home.png)
 
-文档：[开发与维护记录](docs/DEVELOPMENT.md) · [真机验证记录](docs/VERIFICATION.md)
+文档：[开发与维护记录](docs/DEVELOPMENT.md) · [真机验证记录](docs/VERIFICATION.md) · [GMS 实验记录](docs/GMS_EXPERIMENTS.md) · [开源审查](docs/OPEN_SOURCE_REVIEW.md)
 
 ## 功能
 
@@ -58,7 +58,7 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 ./scripts/restore-home.sh SERIAL ORIGINAL_COMPONENT
 ```
 
-输入源切换、系统 HOME 行为和开机启动表现可能随电视固件不同。已在 Sony BRAVIA 4K VH21 / Android 12 验证系统重启自动进入桌面、Home 返回及四个 HDMI 输入会话，详情见[真机验证记录](docs/VERIFICATION.md)。待机唤醒及各 HDMI 外设仍应在目标设备上分别验证。
+输入源切换、系统 HOME 行为和开机启动表现可能随电视固件不同。已在 Sony BRAVIA 4K VH21 / Android 12 验证系统重启自动进入桌面、Home 返回及四个 HDMI 输入会话，详情见[真机验证记录](docs/VERIFICATION.md) · [GMS 实验记录](docs/GMS_EXPERIMENTS.md) · [开源审查](docs/OPEN_SOURCE_REVIEW.md)。待机唤醒及各 HDMI 外设仍应在目标设备上分别验证。
 
 ## 源码结构
 
@@ -88,7 +88,7 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 
 照片访问仅在打开选图功能时请求相应权限。选中图片在后台缩小至最大 1920×1080 的私有副本，不上传、不修改原图；清空照片只删除副本。城市设置、天气缓存及壁纸选择存于本机。不包含广告、账户系统或分析 SDK。电视上已安装应用的名称和图标属于各自权利人，运行时从设备读取。
 
-项目代码和原创壁纸采用 [MIT License](LICENSE)。仓库提供 GitHub 开源所需的基础文件；不代表已经创建远端仓库或发布版本。
+Launcher 自有代码和原创程序化壁纸采用 [MIT License](LICENSE)。独立 AirPlay 接收端及其修改补丁不适用该 MIT 声明，遵循上游 GPL 许可；其他依赖保留各自许可，详见 [第三方来源](third_party/README.md) 和 [补丁说明](patches/README.md)。发布接收端二进制前需准备与该版本匹配的对应源码及许可材料。仓库尚未创建远端或发布版本，发布前事项见 [开源审查](docs/OPEN_SOURCE_REVIEW.md)。
 
 ### 液态玻璃（v0.3.0）
 
