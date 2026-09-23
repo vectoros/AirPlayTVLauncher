@@ -27,7 +27,7 @@ import java.util.concurrent.Executors;
 
 /** Native landscape and local-photo slideshow, sharing the same frame with glass panels. */
 public final class WallpaperView extends View {
-    private static final String[] NAMES = {"极光海岸", "紫暮山峦", "暮色流金"};
+    private static final int[] NAMES = {R.string.palette_coast, R.string.palette_dusk, R.string.palette_gold};
     // Sky top, sky bottom, first glow, second glow, far hill, near hill.
     private static final int[][] COLORS = {
         {0xff061229, 0xff243950, 0xff258d94, 0xff69549c, 0xff192c47, 0xff101d31},
@@ -51,7 +51,7 @@ public final class WallpaperView extends View {
     private float phase;
     private long lastFrame;
     private Runnable frameListener;
-    private static final String[] EFFECTS = {"淡入淡出", "缓慢推拉", "横向滑移"};
+    private static final int[] EFFECTS = {R.string.effect_fade, R.string.effect_zoom, R.string.effect_slide};
     private static final long TRANSITION_MS = 1800;
     private final Paint photoPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF photoRect = new RectF();
@@ -153,7 +153,7 @@ public final class WallpaperView extends View {
     }
 
     public int getEffect() { return effect; }
-    public String getEffectName() { return EFFECTS[effect]; }
+    public String getEffectName() { return getContext().getString(EFFECTS[effect]); }
     public void setEffect(int value) {
         effect = Math.floorMod(value, EFFECTS.length);
         preferences.edit().putInt("wallpaper_effect", effect).apply();
@@ -287,7 +287,7 @@ public final class WallpaperView extends View {
         }
     }
 
-    public String getPaletteName() { return NAMES[palette]; }
+    public String getPaletteName() { return getContext().getString(NAMES[palette]); }
 
     public void cyclePalette() {
         palette = (palette + 1) % COLORS.length;

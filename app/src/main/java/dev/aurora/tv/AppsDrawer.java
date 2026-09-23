@@ -40,10 +40,10 @@ final class AppsDrawer extends Dialog {
         panel.setBackground(shape(0xf21b2939, 24, 0x45ffffff));
         LinearLayout heading = new LinearLayout(getContext());
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("所有应用", 23);
+        TextView title = text(getContext().getString(R.string.all_apps), 23);
         title.setTypeface(null, Typeface.BOLD);
         heading.addView(title, new LinearLayout.LayoutParams(0, dp(42), 1));
-        TextView close = text("返回首页", 14);
+        TextView close = text(getContext().getString(R.string.back_home), 14);
         close.setPadding(dp(18), 0, dp(18), 0);
         focusable(close, this::dismiss);
         heading.addView(close, new LinearLayout.LayoutParams(-2, dp(36)));
@@ -60,7 +60,7 @@ final class AppsDrawer extends Dialog {
             inputs.addView(button, params);
         }
         if (ports.isEmpty()) {
-            TextView button = text("选择电视输入源", 13);
+            TextView button = text(getContext().getString(R.string.choose_input), 13);
             focusable(button, () -> { if (repository.openInputSettings()) dismiss(); });
             inputs.addView(button, new LinearLayout.LayoutParams(dp(180), dp(38)));
         }

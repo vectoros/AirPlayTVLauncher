@@ -93,7 +93,7 @@ public final class LauncherRepository {
             }
         }
         if (featured == null) {
-            featured = new AppEntry("哔哩哔哩 TV", BILIBILI_PACKAGES[0], null, null, true, 0);
+            featured = new AppEntry(context.getString(R.string.bilibili), BILIBILI_PACKAGES[0], null, null, true, 0);
         }
         List<AppEntry> result = new ArrayList<>(found.values());
         Collator collator = Collator.getInstance();
@@ -119,7 +119,7 @@ public final class LauncherRepository {
                     int systemFlags = ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP;
                     int rank = homes.contains(name) ? 2
                             : (info.activityInfo.applicationInfo.flags & systemFlags) != 0 ? 1 : 0;
-                    found.put(name, new AppEntry(bilibili ? "哔哩哔哩 TV" :
+                    found.put(name, new AppEntry(bilibili ? context.getString(R.string.bilibili) :
                             info.loadLabel(packages).toString(), name, intent,
                             info.loadIcon(packages), bilibili, rank));
                 } catch (RuntimeException error) {
@@ -154,17 +154,17 @@ public final class LauncherRepository {
 
     public boolean launch(AppEntry app) {
         if (!app.installed) {
-            toast("请先安装哔哩哔哩 TV 版，再返回首页");
+            toast(context.getString(R.string.install_bilibili));
             return false;
         }
         if (start(app.intent)) return true;
-        toast("暂时无法打开 " + app.label);
+        toast(context.getString(R.string.cannot_open, app.label));
         return false;
     }
 
     public boolean launch(InputEntry input) {
         if (start(input.intent)) return true;
-        toast("请在电视的输入设置中选择 " + input.label);
+        toast(context.getString(R.string.select_input_settings, input.label));
         return openInputSettings();
     }
 
@@ -174,7 +174,7 @@ public final class LauncherRepository {
 
     public boolean openSettings() {
         if (start(new Intent(Settings.ACTION_SETTINGS))) return true;
-        toast("暂时无法打开系统设置，请使用遥控器设置键");
+        toast(context.getString(R.string.settings_error));
         return false;
     }
 

@@ -37,7 +37,7 @@ public final class PhotoStore {
             String error = null;
             int count = 0;
             try { count = importNow(c, uris); }
-            catch (Exception | OutOfMemoryError e) { error = "照片导入失败，请确认照片可读取并重试；原相册已保留。"; }
+            catch (Exception | OutOfMemoryError e) { error = c.getString(R.string.photo_import_error); }
             int result = count; String message = error;
             new Handler(Looper.getMainLooper()).post(() -> callback.onComplete(result, message));
         });

@@ -27,6 +27,12 @@
 
 资源位置、可编辑 SVG 和维护说明见 [图标设计](docs/ICON.md)。新资源已通过 Debug 构建和 Android Lint；目标电视暂时网络不可达，尚未部署验证。
 
+## 中文 / English
+
+界面跟随系统语言，支持简体中文和英文，其他语言默认使用英文。首页、设置、相册、天气和接收端中文资源已补齐；日期与时钟遵循地区和 12/24 小时设置。英文较长按钮、天气面板及照片数量单复数已适配。
+
+The interface follows the system language and supports Simplified Chinese and English, with English as the fallback. Dates and time follow locale and system preferences. See [language coverage and validation](docs/LOCALIZATION.md).
+
 ## 系统兼容与性能
 
 | Android / AOSP | API | 支持状态 |
@@ -35,7 +41,7 @@
 | 8.0–11 | 26–30 | 代码覆盖，玻璃为半透明降级；未实测 |
 | 12 | 31 | Sony BRAVIA 历史实测，支持真实模糊与液态玻璃 |
 | 12L–14 | 32–34 | API 与照片权限分支已覆盖；未实测 |
-| 15 | 35 | 当前编译/目标版本；未实机验证 |
+| 15 | 35 | 当前编译/目标版本；模拟器语言与回归检查通过，未实机验证 |
 | 16–17 | 36–37 | 待兼容性验证，不承诺完整支持 |
 
 面向具备 Leanback / TV 服务的系统，不要求 GMS。HDMI 依赖厂商 TV Input；独立 AirPlay 当前产物仅支持 `armeabi-v7a`，不能直接用于纯 64 位电视。
