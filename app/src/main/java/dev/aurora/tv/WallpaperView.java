@@ -78,13 +78,15 @@ public final class WallpaperView extends View {
         @Override public void run() {
             if (!running || !attached || getWindowVisibility() != VISIBLE) return;
             long now = SystemClock.uptimeMillis();
-            phase += Math.min(100L, now - lastFrame) / 42000f;
+            boolean wasMoving = needsContinuousFrames();
+            long elapsed = Math.max(0L, now - lastFrame);
+            phase += Math.min(100L, elapsed) / 42000f;
             if (phase > Math.PI * 2) phase -= (float) (Math.PI * 2);
-            advancePhotos(Math.min(100L, now - lastFrame));
+            advancePhotos(elapsed);
             lastFrame = now;
-            invalidate();
-            if (frameListener != null) frameListener.run();
-            postDelayed(this, 40);
+            // A static photo needs neither GPU work nor glass resampling while waiting.
+            if (wasMoving || needsContinuousFrames()) redraw();
+            postDelayed(this, nextFrameDelay());
         }
     };
 
@@ -130,11 +132,14 @@ public final class WallpaperView extends View {
     }
     public int getPhotoCount() { return photos.size(); }
     public boolean isTransitioning() { return photoMode && transitionElapsed >= 0; }
+    public boolean isPhotoStill() {
+        return photoMode && currentPhoto != null && effect != 1 && transitionElapsed < 0;
+    }
 
     public void nextPhoto() {
         if (!photoMode || currentPhoto == null || photos.size() < 2) return;
         photoElapsed = intervalSeconds * 1000L;
-        ensurePhoto();
+        scheduleFrames();
     }
 
     public void usePhotos(boolean value) {
@@ -152,6 +157,7 @@ public final class WallpaperView extends View {
     public void setEffect(int value) {
         effect = Math.floorMod(value, EFFECTS.length);
         preferences.edit().putInt("wallpaper_effect", effect).apply();
+        scheduleFrames();
         redraw();
     }
 
@@ -259,9 +265,13 @@ public final class WallpaperView extends View {
         if (!photoMode || currentPhoto == null) return;
         photoElapsed += delta;
         if (nextPhoto == null) return;
-        if (transitionElapsed < 0 && photoElapsed >= intervalSeconds * 1000L) transitionElapsed = 0;
-        if (transitionElapsed < 0) return;
-        transitionElapsed += delta;
+        if (transitionElapsed < 0) {
+            if (photoElapsed < intervalSeconds * 1000L) return;
+            // Count only the time beyond the hold period, not the whole idle tick.
+            transitionElapsed = Math.min(delta, photoElapsed - intervalSeconds * 1000L);
+        } else {
+            transitionElapsed += delta;
+        }
         float t = Math.min(1f, transitionElapsed / (float) TRANSITION_MS);
         transition = t * t * (3 - 2 * t);
         if (t >= 1) {
@@ -287,12 +297,22 @@ public final class WallpaperView extends View {
         if (frameListener != null) frameListener.run();
     }
 
+    private boolean needsContinuousFrames() {
+        return !isPhotoStill();
+    }
+
+    private long nextFrameDelay() {
+        if (needsContinuousFrames()) return 40;
+        if (nextPhoto == null) return 1000;
+        return Math.max(1L, Math.min(1000L, intervalSeconds * 1000L - photoElapsed));
+    }
+
     private void scheduleFrames() {
         removeCallbacks(frame);
         if (active()) {
             ensurePhoto();
             lastFrame = SystemClock.uptimeMillis();
-            postDelayed(frame, 40);
+            postDelayed(frame, nextFrameDelay());
         } else {
             cancelLoad();
         }

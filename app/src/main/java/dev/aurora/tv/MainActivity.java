@@ -60,7 +60,9 @@ public final class MainActivity extends Activity {
         // The landscape drifts very slowly: reuse blurred layers between samples.
         wallpaper.setOnFrameListener(() -> {
             long now = SystemClock.uptimeMillis();
-            if (now - lastGlassFrame < (wallpaper.isTransitioning() ? 100 : 1000)) return;
+            // A still photo has no future frame to repair a skipped final glass sample.
+            if (!wallpaper.isPhotoStill()
+                    && now - lastGlassFrame < (wallpaper.isTransitioning() ? 100 : 1000)) return;
             lastGlassFrame = now;
             for (LiquidGlassFrame glass : glassSurfaces) glass.refreshBackdrop();
             if(paletteText!=null)updateWallpaperLabel();
@@ -123,7 +125,7 @@ public final class MainActivity extends Activity {
         page.addView(inputRow, new LinearLayout.LayoutParams(-1, dp(49)));
         setContentView(root);
         inputManager = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
-        populate();
+        // onResume populates once, including the initial launch.
     }
 
     private void populate() {
