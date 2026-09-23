@@ -25,6 +25,7 @@ public final class RegressionInstrumentation extends Instrumentation {
         try {
             sandbox = new IsolatedContext(getTargetContext());
             testPhotos();
+            testLanguages();
             Throwable[] schedulingFailure = new Throwable[1];
             runOnMainSync(() -> {
                 try { testWallpaperScheduling(); }
@@ -88,6 +89,30 @@ public final class RegressionInstrumentation extends Instrumentation {
         onDisk = new File(sandbox.getFilesDir(), "wallpapers").listFiles();
         expect(onDisk != null && onDisk.length == 0 && Arrays.equals(wideHash, hash(wide)) && Arrays.equals(turnedHash, hash(turned)),
                 "Clear removes app copies and leaves original photo bytes unchanged");
+    }
+
+    private void testLanguages() throws Exception {
+        android.content.res.Configuration config = new android.content.res.Configuration(getTargetContext().getResources().getConfiguration());
+        config.setLocales(new LocaleList(Locale.US));
+        Context en = getTargetContext().createConfigurationContext(config);
+        config.setLocales(new LocaleList(Locale.SIMPLIFIED_CHINESE));
+        Context zh = getTargetContext().createConfigurationContext(config);
+        config.setLocales(new LocaleList(Locale.FRENCH));
+        Context fallback = getTargetContext().createConfigurationContext(config);
+        expect("All apps".equals(en.getString(R.string.all_apps)), "English home resources resolve");
+        expect(!en.getString(R.string.all_apps).equals(zh.getString(R.string.all_apps)), "Chinese uses translated resources");
+        expect(en.getString(R.string.all_apps).equals(fallback.getString(R.string.all_apps)), "Unsupported language falls back to English");
+        expect("Selected 1 photo".equals(en.getResources().getQuantityString(R.plurals.selected_photos, 1, 1)), "English singular photo count");
+        expect("Selected 2 photos".equals(en.getResources().getQuantityString(R.plurals.selected_photos, 2, 2)), "English plural photo count");
+        expect(!WeatherService.describe(en, 95).equals(WeatherService.describe(zh, 95)), "Weather codes localize at render time");
+        org.json.JSONObject cached = new org.json.JSONObject()
+                .put("city", "Test City").put("date", "2026-09-24")
+                .put("temperature", 20).put("high", 24).put("low", 16)
+                .put("code", 0).put("updatedAt", 1).put("locationSource", "IP test");
+        WeatherService.Weather weather = WeatherService.Weather.fromJson(cached);
+        expect(weather.sourceText(en).equals(en.getString(R.string.location_ip)), "Legacy cached IP label resolves in English");
+        expect(weather.sourceText(zh).equals(zh.getString(R.string.location_ip)), "Same cache resolves in Chinese without refetch");
+        expect("High 24°  Low 16°".equals(weather.rangeText(en)), "Weather range uses localized format arguments");
     }
 
     /** Exercise hold/transition boundaries without waiting for a real slideshow. */

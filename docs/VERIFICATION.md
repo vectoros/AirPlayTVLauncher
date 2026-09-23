@@ -1,3 +1,9 @@
+# 中英文显示验证（2026-09-24）
+
+- Launcher 构建、测试 APK 编译和 Lint 成功；AirPlay 中文资源补丁构建成功。
+- Android 15 / ARM64 通用模拟器，1920×1080 / density 320：29 项 instrumentation 检查通过（照片 12、轮播调度 8、语言 9）。此前未执行的轮播调度检查已在本轮模拟器运行通过，不代表 Sony 性能基准。
+- 中英文首页、英文设置/相册已人工检查；未进行 Sony 真机复测或接收端原生协议运行验证。详见 [语言说明](LOCALIZATION.md)。
+
 # 兼容性与性能审查（2026-09-24）
 
 - README 新增系统版本列表，详细能力边界见 [兼容性与性能](COMPATIBILITY_AND_PERFORMANCE.md)。只有 Sony Android 12 有历史实机证据。

@@ -40,13 +40,16 @@ public final class PhotoPickerActivity extends Activity {
         }
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL); root.setPadding(dp(30), dp(18), dp(30), dp(18)); root.setBackgroundColor(0xff101a27);
-        TextView title = new TextView(this); title.setText("本地相册 · 选择壁纸"); title.setTextSize(25); title.setTextColor(Color.WHITE); root.addView(title);
+        TextView title = new TextView(this); title.setText(getString(R.string.album_title)); title.setTextSize(25); title.setTextColor(Color.WHITE); root.addView(title);
         status = new TextView(this); status.setTextColor(0xffcbd5df); status.setTextSize(14); status.setPadding(0, dp(8), 0, dp(8)); root.addView(status);
         LinearLayout actions = new LinearLayout(this);
-        done = button("使用所选照片", () -> finishSelection(new ArrayList<>(selected))); actions.addView(done);
-        actions.addView(button("文件 / USB 选择", this::openDocuments));
-        actions.addView(button("刷新 / 授权", this::requestPhotos));
-        actions.addView(button("取消", this::finish)); root.addView(actions);
+        done = button(getString(R.string.use_photos), () -> finishSelection(new ArrayList<>(selected))); actions.addView(done);
+        actions.addView(button(getString(R.string.files_usb), this::openDocuments));
+        actions.addView(button(getString(R.string.refresh_access), this::requestPhotos));
+        actions.addView(button(getString(R.string.cancel), this::finish));
+        HorizontalScrollView actionScroll = new HorizontalScrollView(this);
+        actionScroll.setHorizontalScrollBarEnabled(false); actionScroll.addView(actions);
+        root.addView(actionScroll);
         albums = new Spinner(this); root.addView(albums);
         grid = new GridView(this); grid.setNumColumns(5); grid.setVerticalSpacing(dp(8)); grid.setHorizontalSpacing(dp(8)); grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
         grid.setSelector(android.R.drawable.dialog_holo_light_frame);
@@ -54,7 +57,7 @@ public final class PhotoPickerActivity extends Activity {
         grid.setOnItemClickListener((parent, view, position, id) -> {
             Uri uri = visible.get(position).uri;
             if (!selected.remove(uri)) {
-                if (selected.size() >= 30) { Toast.makeText(this, "最多选择 30 张照片", Toast.LENGTH_SHORT).show(); return; }
+                if (selected.size() >= 30) { Toast.makeText(this, getString(R.string.photo_limit), Toast.LENGTH_SHORT).show(); return; }
                 selected.add(uri);
             }
             LinearLayout card = (LinearLayout) view;
@@ -85,11 +88,11 @@ public final class PhotoPickerActivity extends Activity {
         super.onRequestPermissionsResult(request, permissions, results);
         if (request == PERMISSION) {
             if (hasPhotos()) loadPhotos();
-            else status.setText("未获得照片权限。可在系统设置中允许访问，或使用“文件 / USB 选择”。");
+            else status.setText(getString(R.string.photo_permission));
         }
     }
     private void loadPhotos() {
-        status.setText("正在读取本地相册…");
+        status.setText(getString(R.string.loading_album));
         io.execute(() -> {
             List<Photo> photos = new ArrayList<>(); String error = null;
             Uri collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
@@ -98,14 +101,14 @@ public final class PhotoPickerActivity extends Activity {
                     MediaStore.Images.Media.DATE_ADDED + " DESC")) {
                 if (cursor != null) while (cursor.moveToNext()) {
                     String album = cursor.getString(1);
-                    photos.add(new Photo(ContentUris.withAppendedId(collection, cursor.getLong(0)), album == null ? "未命名相册" : album, cursor.getString(2)));
+                    photos.add(new Photo(ContentUris.withAppendedId(collection, cursor.getLong(0)), album == null ? getString(R.string.unnamed_album) : album, cursor.getString(2)));
                 }
-            } catch (RuntimeException e) { error = "读取相册失败，请检查照片权限。也可使用“文件 / USB 选择”。"; }
+            } catch (RuntimeException e) { error = getString(R.string.album_error); }
             String message = error;
             main.post(() -> {
                 if (destroyed) return;
                 all.clear(); all.addAll(photos);
-                List<String> names = new ArrayList<>(); names.add("全部相册");
+                List<String> names = new ArrayList<>(); names.add(getString(R.string.all_albums));
                 for (Photo photo : all) if (!names.contains(photo.album)) names.add(photo.album);
                 albums.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
                 albums.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -122,20 +125,20 @@ public final class PhotoPickerActivity extends Activity {
         });
     }
     private void updateCount() {
-        done.setText("使用所选照片（" + selected.size() + "）"); done.setEnabled(!selected.isEmpty());
-        status.setText(all.isEmpty() ? "相册中没有照片。请将照片放入电视 Pictures / DCIM，或从文件 / USB 选择。" :
-                "方向键浏览，确认键多选 · 已选 " + selected.size() + " / 30 · 照片将复制到应用内，原图保持不变" +
-                (Build.VERSION.SDK_INT >= 34 && !granted(Manifest.permission.READ_MEDIA_IMAGES) ? " · 当前仅可见已授权照片" : ""));
+        done.setText(getString(R.string.use_photos_count, selected.size())); done.setEnabled(!selected.isEmpty());
+        status.setText(all.isEmpty() ? getString(R.string.album_empty) :
+                getString(R.string.selection_hint, selected.size()) +
+                (Build.VERSION.SDK_INT >= 34 && !granted(Manifest.permission.READ_MEDIA_IMAGES) ? getString(R.string.limited_access) : ""));
     }
     private void openDocuments() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE)
                 .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         android.content.pm.ResolveInfo resolved = getPackageManager().resolveActivity(intent, 0);
         if (resolved == null || "com.android.tv.frameworkpackagestubs".equals(resolved.activityInfo.packageName)) {
-            status.setText("这台电视没有可用的系统文件选择器。请把照片复制到 Pictures / DCIM，再点击刷新。"); return;
+            status.setText(getString(R.string.picker_missing)); return;
         }
         try { startActivityForResult(intent, DOCUMENTS); }
-        catch (ActivityNotFoundException | SecurityException e) { status.setText("无法打开文件选择器，请从本地相册选择照片。"); }
+        catch (ActivityNotFoundException | SecurityException e) { status.setText(getString(R.string.picker_error)); }
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
@@ -145,7 +148,7 @@ public final class PhotoPickerActivity extends Activity {
         if (data.getClipData() != null) for (int i = 0; i < data.getClipData().getItemCount(); i++) {
             Uri uri = data.getClipData().getItemAt(i).getUri(); if (uri != null) uris.add(uri);
         }
-        if (uris.size() > 30) { status.setText("最多选择 30 张照片，请重新选择。"); return; }
+        if (uris.size() > 30) { status.setText(getString(R.string.photo_limit_retry)); return; }
         for (Uri uri : uris) try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
         catch (SecurityException ignored) { /* Main immediately imports while the temporary grant remains active. */ }
         finishSelection(new ArrayList<>(uris));

@@ -39,8 +39,10 @@ public final class MainActivity extends Activity {
     private final Runnable tick = new Runnable() {
         public void run() {
             Date now = new Date();
-            clock.setText(new SimpleDateFormat("HH:mm", Locale.CHINA).format(now));
-            date.setText(new SimpleDateFormat("M月d日  EEEE", Locale.CHINA).format(now));
+            clock.setText(android.text.format.DateFormat.getTimeFormat(MainActivity.this).format(now));
+            date.setText(new SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(
+                    getResources().getConfiguration().getLocales().get(0), "EEEEMMMd"),
+                    getResources().getConfiguration().getLocales().get(0)).format(now));
             handler.postDelayed(this, 15000);
         }
     };
@@ -83,31 +85,33 @@ public final class MainActivity extends Activity {
         header.addView(airplay);
         LinearLayout.LayoutParams ap = (LinearLayout.LayoutParams) airplay.getLayoutParams();
         ap.rightMargin=dp(12);
-        TextView apps = button("所有应用", () -> showApps());
+        TextView apps = button(getString(R.string.all_apps), () -> showApps());
         header.addView(apps);
-        TextView settings = button("设置", () -> showSettings());
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(70), dp(36)); sp.leftMargin=dp(12);
+        TextView settings = button(getString(R.string.settings), () -> showSettings());
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, dp(36)); sp.leftMargin=dp(12);
         header.addView(settings, sp);
         page.addView(header, new LinearLayout.LayoutParams(-1, dp(36)));
 
         LinearLayout hero = row(); hero.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout timeBlock = column();
-        TextView overline = text("让此刻，慢下来", 16, 0xffd0e3e8);
+        TextView overline = text(getString(R.string.tagline), 16, 0xffd0e3e8);
         timeBlock.addView(overline);
         clock = text("", 66, Color.WHITE); clock.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        clock.setSingleLine(true); clock.setAutoSizeTextTypeUniformWithConfiguration(32, 66, 2, android.util.TypedValue.COMPLEX_UNIT_SP);
         timeBlock.addView(clock, new LinearLayout.LayoutParams(-2, dp(83)));
         date = text("", 16, 0xffc9dbe2); timeBlock.addView(date);
         hero.addView(timeBlock, new LinearLayout.LayoutParams(0, -2, 1));
         LiquidGlassFrame weatherCard = newGlass();
-        weatherText = text("今日天气\n正在根据 IP 定位…", 18, Color.WHITE);
+        weatherText = text(getString(R.string.weather_initial), 18, Color.WHITE);
         weatherText.setPadding(dp(22), dp(15), dp(22), dp(15));
-        weatherText.setLineSpacing(dp(5), 1);
+        weatherText.setLineSpacing(dp(2), 1);
+        weatherText.setAutoSizeTextTypeUniformWithConfiguration(12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         weatherCard.addView(weatherText, new FrameLayout.LayoutParams(-1,-1));
         focusable(weatherCard, () -> showWeatherSettings());
-        hero.addView(weatherCard, new LinearLayout.LayoutParams(dp(244), dp(118)));
+        hero.addView(weatherCard, new LinearLayout.LayoutParams(dp(280), dp(146)));
         page.addView(hero, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        TextView appHeading = text("常用应用    ·    ↓ 所有应用", 16, 0xffe4edf1);
+        TextView appHeading = text(getString(R.string.favorite_apps), 16, 0xffe4edf1);
         page.addView(appHeading, new LinearLayout.LayoutParams(-1, dp(30)));
         HorizontalScrollView appScroll = new HorizontalScrollView(this);
         appScroll.setClipChildren(false); appScroll.setClipToPadding(false); appScroll.setHorizontalScrollBarEnabled(false);
@@ -117,7 +121,7 @@ public final class MainActivity extends Activity {
         page.addView(appScroll, new LinearLayout.LayoutParams(-1, dp(131)));
 
         LinearLayout inputHeading = row();
-        inputHeading.addView(text("输入源", 15, 0xffe4edf1), new LinearLayout.LayoutParams(0, -1, 1));
+        inputHeading.addView(text(getString(R.string.inputs), 15, 0xffe4edf1), new LinearLayout.LayoutParams(0, -1, 1));
         paletteText = text("", 11, 0xffa9c4ce);
         inputHeading.addView(paletteText);
         page.addView(inputHeading, new LinearLayout.LayoutParams(-1, dp(26)));
@@ -152,7 +156,7 @@ public final class MainActivity extends Activity {
             card.setContentDescription(app.label);
             focusable(card, () -> repository.launch(app));
             wrap.addView(card,new LinearLayout.LayoutParams(dp(124),dp(80)));
-            TextView label=text(app.isBilibili ? "哔哩哔哩 TV" : app.label, 12, 0xffe8eef6);
+            TextView label=text(app.isBilibili ? getString(R.string.bilibili) : app.label, 12, 0xffe8eef6);
             label.setGravity(Gravity.CENTER); label.setSingleLine(true); label.setEllipsize(android.text.TextUtils.TruncateAt.END);
             wrap.addView(label,new LinearLayout.LayoutParams(dp(124),dp(29)));
             LinearLayout.LayoutParams wp=new LinearLayout.LayoutParams(dp(124),-2); wp.rightMargin=dp(16);
@@ -162,7 +166,7 @@ public final class MainActivity extends Activity {
         java.util.List<LauncherRepository.InputEntry> inputs=repository.hdmiInputs();
         for(LauncherRepository.InputEntry input: inputs) {
             LiquidGlassFrame card=newGlass();
-            TextView label=text("▱  "+input.label.replaceAll("\\s*\\(.*?\\)", "")+"   ·  "+(input.connected?"已连接":"未连接"),14,Color.WHITE);
+            TextView label=text("▱  "+input.label.replaceAll("\\s*\\(.*?\\)", "")+"   ·  "+(input.connected?getString(R.string.connected):getString(R.string.disconnected)),14,Color.WHITE);
             label.setSingleLine(true);
             label.setEllipsize(android.text.TextUtils.TruncateAt.END);
             label.setPadding(dp(14),0,dp(10),0);
@@ -172,7 +176,7 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-1,1); lp.rightMargin=dp(12);
             inputRow.addView(card,lp);
         }
-        if(inputs.isEmpty()) inputRow.addView(button("选择电视输入源",()->repository.openInputSettings()));
+        if(inputs.isEmpty()) inputRow.addView(button(getString(R.string.choose_input),()->repository.openInputSettings()));
         updateWallpaperLabel();
         if(firstApp!=null) firstApp.requestFocus();
     }
@@ -189,38 +193,38 @@ public final class MainActivity extends Activity {
         appsDrawer.show();
     }
     private void showSettings() {
-        new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{"壁纸与照片轮播","天气与定位","液态玻璃","电视系统设置","系统输入源","AirPlay 接收","关于"},(d,n)->{
+        new AlertDialog.Builder(this).setTitle("Aurora TV").setItems(new String[]{getString(R.string.wallpaper_settings),getString(R.string.weather_settings),getString(R.string.liquid_glass),getString(R.string.system_settings),getString(R.string.system_inputs),getString(R.string.airplay_receiver),getString(R.string.about)},(d,n)->{
             if(n==0)showWallpaperSettings();
             if(n==1)showWeatherSettings();
             if(n==2)showGlassSettings();
             if(n==3)repository.openSettings();
             if(n==4)repository.openInputSettings();
             if(n==5)showAirPlay();
-            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.5.0").setMessage("简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置").setPositiveButton("好",null).show();
-        }).setNegativeButton("返回",null).show();
+            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.5.0").setMessage(getString(R.string.about_message)).setPositiveButton(getString(R.string.ok),null).show();
+        }).setNegativeButton(getString(R.string.back),null).show();
     }
     private void showAirPlay() {
         Intent receiver=getPackageManager().getLeanbackLaunchIntentForPackage(AirPlayCompanion.PACKAGE);
         if(receiver==null)receiver=getPackageManager().getLaunchIntentForPackage(AirPlayCompanion.PACKAGE);
         final Intent launch=receiver;
-        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle("AirPlay 接收")
-            .setMessage(launch==null ? "接收服务尚未安装，请按项目文档安装 AirPlay Server。" :
-                "桌面启动时会自动开启接收服务，同一局域网的 iPhone、iPad 或 Mac 可通过屏幕镜像连接。\n\n打开接收端可修改名称和配对 PIN。服务后台常驻，返回桌面会确保服务启动。\n\n不支持受 DRM 保护的视频；多房间同步音频不作兼容保证。")
-            .setNegativeButton("返回",null);
-        if(launch!=null)dialog.setPositiveButton("打开接收端",(d,n)->{
+        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle(getString(R.string.airplay_receiver))
+            .setMessage(launch==null ? getString(R.string.airplay_missing) :
+                getString(R.string.airplay_help))
+            .setNegativeButton(getString(R.string.back),null);
+        if(launch!=null)dialog.setPositiveButton(getString(R.string.open_receiver),(d,n)->{
             try { startActivity(launch); }
-            catch(ActivityNotFoundException|SecurityException e){Toast.makeText(this,"无法打开接收端，请检查安装状态",Toast.LENGTH_LONG).show();}
+            catch(ActivityNotFoundException|SecurityException e){Toast.makeText(this,getString(R.string.receiver_error),Toast.LENGTH_LONG).show();}
         });
         dialog.show();
     }
     private void showGlassSettings() {
-        new AlertDialog.Builder(this).setTitle("液态玻璃")
-            .setMultiChoiceItems(new String[]{"启用液态玻璃"},new boolean[]{liquidGlass},(dialog,index,checked)->{
+        new AlertDialog.Builder(this).setTitle(getString(R.string.liquid_glass))
+            .setMultiChoiceItems(new String[]{getString(R.string.enable_glass)},new boolean[]{liquidGlass},(dialog,index,checked)->{
                 liquidGlass=checked;
                 getPreferences(MODE_PRIVATE).edit().putBoolean("liquid_glass",checked).apply();
                 for(LiquidGlassFrame glass:glassSurfaces)glass.setLiquidEnabled(checked);
                 populate();
-            }).setPositiveButton("完成",null).show();
+            }).setPositiveButton(getString(R.string.done),null).show();
     }
     private LiquidGlassFrame newGlass() {
         LiquidGlassFrame glass=new LiquidGlassFrame(this,wallpaper);
@@ -229,36 +233,36 @@ public final class MainActivity extends Activity {
         return glass;
     }
     private void updateWallpaperLabel() {
-        String label = wallpaper.isPhotoFallback() ? "照片暂不可用 · " + wallpaper.getPaletteName() : wallpaper.isUsingPhotos() ? "照片轮播 · " + wallpaper.getPhotoCount() + " 张" : wallpaper.getPaletteName()+"  /  动态壁纸";
+        String label = wallpaper.isPhotoFallback() ? getString(R.string.photo_fallback, wallpaper.getPaletteName()) : wallpaper.isUsingPhotos() ? getResources().getQuantityString(R.plurals.slideshow_count, wallpaper.getPhotoCount(), wallpaper.getPhotoCount()) : getString(R.string.wallpaper_animated, wallpaper.getPaletteName());
         if(!label.contentEquals(paletteText.getText()))paletteText.setText(label);
     }
     private void showWallpaperSettings() {
-        if(importingPhotos){Toast.makeText(this,"照片正在导入，请稍候",Toast.LENGTH_SHORT).show();return;}
-        String[] effects = {"柔和淡化", "缓慢推拉", "横向滑移"};
-        new AlertDialog.Builder(this).setTitle("壁纸与照片轮播").setItems(new String[]{
-            "选择本地照片…", "背景来源 · " + (wallpaper.isUsingPhotos() ? "照片轮播" : "渐变壁纸"),
-            "切换渐变配色 · " + wallpaper.getPaletteName(), "轮播间隔 · " + wallpaper.getIntervalSeconds() + " 秒",
-            "过渡效果 · " + effects[wallpaper.getEffect()], "下一张照片", "清空已选照片"}, (d,n)->{
+        if(importingPhotos){Toast.makeText(this,getString(R.string.import_wait),Toast.LENGTH_SHORT).show();return;}
+        String[] effects = {getString(R.string.effect_soft_fade), getString(R.string.effect_zoom), getString(R.string.effect_slide)};
+        new AlertDialog.Builder(this).setTitle(getString(R.string.wallpaper_settings)).setItems(new String[]{
+            getString(R.string.choose_photos), getString(R.string.background_source, getString(wallpaper.isUsingPhotos() ? R.string.slideshow : R.string.gradient_wallpaper)),
+            getString(R.string.palette_selected, wallpaper.getPaletteName()), getString(R.string.interval_selected, wallpaper.getIntervalSeconds()),
+            getString(R.string.effect_selected, effects[wallpaper.getEffect()]), getString(R.string.next_photo), getString(R.string.clear_photos)}, (d,n)->{
                 if(n==0) {
-                    if(importingPhotos){Toast.makeText(this,"照片正在导入，请稍候",Toast.LENGTH_SHORT).show();return;}
+                    if(importingPhotos){Toast.makeText(this,getString(R.string.import_wait),Toast.LENGTH_SHORT).show();return;}
                     startActivityForResult(new Intent(this, PhotoPickerActivity.class), PICK_PHOTOS);
                 }
                 if(n==1) {
-                    if(!wallpaper.isUsingPhotos() && wallpaper.getPhotoCount()==0){Toast.makeText(this,"请先选择本地照片",Toast.LENGTH_SHORT).show();return;}
+                    if(!wallpaper.isUsingPhotos() && wallpaper.getPhotoCount()==0){Toast.makeText(this,getString(R.string.select_photos_first),Toast.LENGTH_SHORT).show();return;}
                     wallpaper.usePhotos(!wallpaper.isUsingPhotos());updateWallpaperLabel();
                 }
                 if(n==2){wallpaper.usePhotos(false);wallpaper.cyclePalette();updateWallpaperLabel();}
                 if(n==3) {
-                    int[] seconds={15,30,60};String[] labels={"15 秒","30 秒","60 秒"};
+                    int[] seconds={15,30,60};String[] labels={getString(R.string.seconds_15),getString(R.string.seconds_30),getString(R.string.seconds_60)};
                     int selected=wallpaper.getIntervalSeconds()==15?0:wallpaper.getIntervalSeconds()==30?1:2;
-                    new AlertDialog.Builder(this).setTitle("轮播间隔").setSingleChoiceItems(labels,selected,(dialog,i)->{wallpaper.setIntervalSeconds(seconds[i]);dialog.dismiss();}).setNegativeButton("返回",null).show();
+                    new AlertDialog.Builder(this).setTitle(getString(R.string.slideshow_interval)).setSingleChoiceItems(labels,selected,(dialog,i)->{wallpaper.setIntervalSeconds(seconds[i]);dialog.dismiss();}).setNegativeButton(getString(R.string.back),null).show();
                 }
-                if(n==4)new AlertDialog.Builder(this).setTitle("过渡效果").setSingleChoiceItems(effects,wallpaper.getEffect(),(dialog,i)->{wallpaper.setEffect(i);dialog.dismiss();}).setNegativeButton("返回",null).show();
+                if(n==4)new AlertDialog.Builder(this).setTitle(getString(R.string.transition_effect)).setSingleChoiceItems(effects,wallpaper.getEffect(),(dialog,i)->{wallpaper.setEffect(i);dialog.dismiss();}).setNegativeButton(getString(R.string.back),null).show();
                 if(n==5){wallpaper.nextPhoto();}
-                if(n==6)new AlertDialog.Builder(this).setTitle("清空已选照片？").setMessage("仅清除桌面保存的照片副本，原始相册不受影响。")
-                    .setPositiveButton("清空",(dialog,i)->{wallpaper.usePhotos(false);wallpaper.setPhotos(Collections.emptyList());PhotoStore.clear(this);updateWallpaperLabel();})
-                    .setNegativeButton("取消",null).show();
-            }).setNegativeButton("返回",null).show();
+                if(n==6)new AlertDialog.Builder(this).setTitle(getString(R.string.clear_photos_title)).setMessage(getString(R.string.clear_photos_message))
+                    .setPositiveButton(getString(R.string.clear),(dialog,i)->{wallpaper.usePhotos(false);wallpaper.setPhotos(Collections.emptyList());PhotoStore.clear(this);updateWallpaperLabel();})
+                    .setNegativeButton(getString(R.string.cancel),null).show();
+            }).setNegativeButton(getString(R.string.back),null).show();
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request,result,data);
@@ -268,45 +272,45 @@ public final class MainActivity extends Activity {
         if(data.getData()!=null)selected.add(data.getData());
         if(selected.isEmpty())return;
         importingPhotos=true;
-        Toast.makeText(this,"正在导入照片…",Toast.LENGTH_SHORT).show();
+        Toast.makeText(this,getString(R.string.importing),Toast.LENGTH_SHORT).show();
         PhotoStore.importSelection(this,new ArrayList<>(selected),(count,error)->{
             importingPhotos=false;
             if(isFinishing()||isDestroyed())return;
             if(error!=null){Toast.makeText(this,error,Toast.LENGTH_LONG).show();return;}
             wallpaper.setPhotos(PhotoStore.listFiles(this));wallpaper.usePhotos(true);lastGlassFrame=0;updateWallpaperLabel();
-            Toast.makeText(this,"已选择 " + count + " 张照片",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,getResources().getQuantityString(R.plurals.selected_photos, count, count),Toast.LENGTH_SHORT).show();
         });
     }
     private void showWeatherSettings() {
-        new AlertDialog.Builder(this).setTitle("天气与定位").setItems(new String[]{
-            "自动 IP 定位" + (weather.isAutomatic() ? " · 当前" : ""), "立即刷新天气与位置", "手动选择城市"},(d,n)->{
+        new AlertDialog.Builder(this).setTitle(getString(R.string.weather_settings)).setItems(new String[]{
+            getString(weather.isAutomatic() ? R.string.auto_location_current : R.string.auto_location), getString(R.string.refresh_weather), getString(R.string.manual_city)},(d,n)->{
                 if(n==0){weather.useAutomaticLocation();refreshWeather(true);}
                 if(n==1)refreshWeather(true);
                 if(n==2)chooseCity();
-            }).setNegativeButton("返回",null).show();
+            }).setNegativeButton(getString(R.string.back),null).show();
     }
     private void chooseCity() {
-        EditText query=new EditText(this);query.setSingleLine(true);query.setHint("输入城市，如 上海 / Shanghai");query.setTextColor(Color.WHITE);
-        new AlertDialog.Builder(this).setTitle("天气城市").setMessage("仅查询所选城市天气，无需定位权限。数据来自 Open-Meteo。")
-            .setView(query).setPositiveButton("搜索",(d,n)->{
-                weatherText.setText("正在搜索城市…");
+        EditText query=new EditText(this);query.setSingleLine(true);query.setHint(getString(R.string.city_hint));query.setTextColor(Color.WHITE);
+        new AlertDialog.Builder(this).setTitle(getString(R.string.weather_city)).setMessage(getString(R.string.city_message))
+            .setView(query).setPositiveButton(getString(R.string.search),(d,n)->{
+                weatherText.setText(getString(R.string.searching_city));
                 weather.searchCity(query.getText().toString(),(locations,error)->{
                     if(isFinishing()||isDestroyed())return;
-                    if(locations.isEmpty()){Toast.makeText(this,error==null?"没有找到城市":error,Toast.LENGTH_LONG).show();refreshWeather();return;}
+                    if(locations.isEmpty()){Toast.makeText(this,error==null?getString(R.string.no_city):error,Toast.LENGTH_LONG).show();refreshWeather();return;}
                     String[] names=new String[locations.size()];for(int i=0;i<names.length;i++)names[i]=locations.get(i).label;
-                    new AlertDialog.Builder(this).setTitle("选择城市").setItems(names,(dialog,index)->{weather.setLocation(locations.get(index));refreshWeather();}).setNegativeButton("返回",(dialog,index)->refreshWeather()).setOnCancelListener(dialog->refreshWeather()).show();
+                    new AlertDialog.Builder(this).setTitle(getString(R.string.choose_city)).setItems(names,(dialog,index)->{weather.setLocation(locations.get(index));refreshWeather();}).setNegativeButton(getString(R.string.back),(dialog,index)->refreshWeather()).setOnCancelListener(dialog->refreshWeather()).show();
                 });
-            }).setNegativeButton("返回",null).show();
+            }).setNegativeButton(getString(R.string.back),null).show();
     }
     private void refreshWeather() { refreshWeather(false); }
     private void refreshWeather(boolean force) {
-        weatherText.setText(weather.isAutomatic() ? "正在根据 IP 定位…" : "正在更新天气…");
+        weatherText.setText(weather.isAutomatic() ? getString(R.string.locating) : getString(R.string.updating_weather));
         weather.refresh(force,(result,error)->{
             if(isFinishing()||isDestroyed())return;
-            if(result==null){weatherText.setText(error==null?"天气暂不可用\n点击重试或选择城市":error+"\n点击重试或选择城市");return;}
-            String details = result.city+"   "+result.description()+"\n"+result.temperatureText()+"   "+result.rangeText()+"\n"+result.locationSource+" · "+result.updatedText();
+            if(result==null){weatherText.setText(error==null?getString(R.string.weather_unavailable):getString(R.string.weather_retry, error));return;}
+            String details = result.city+"   "+result.description(this)+"\n"+result.temperatureText()+"   "+result.rangeText(this)+"\n"+result.sourceText(this)+"\n"+result.updatedText(this);
             SpannableString formatted = new SpannableString(details);
-            formatted.setSpan(new AbsoluteSizeSpan(11, true), details.lastIndexOf('\n')+1, details.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            formatted.setSpan(new AbsoluteSizeSpan(11, true), details.indexOf('\n', details.indexOf('\n')+1)+1, details.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             weatherText.setText(formatted);
             weatherText.setTextSize(15);
         });

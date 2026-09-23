@@ -80,12 +80,17 @@ public final class WeatherService implements AutoCloseable {
             this.locationSource = locationSource;
         }
 
-        public String description() { return describe(code); }
+        public String description(Context context) { return describe(context, code); }
+        public String sourceText(Context context) {
+            return context.getString("ip".equals(locationSource) || locationSource.contains("IP")
+                    ? R.string.location_ip : R.string.location_manual);
+        }
         public String temperatureText() { return Math.round(temperature) + "°"; }
-        public String rangeText() { return "最高 " + Math.round(high) + "°  最低 " + Math.round(low) + "°"; }
-        public String updatedText() {
-            String time = new SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(new Date(updatedAt));
-            return (offline ? "上次缓存 · " : "更新于 ") + time;
+        public String rangeText(Context context) { return context.getString(R.string.weather_range, Math.round(high), Math.round(low)); }
+        public String updatedText(Context context) {
+            String time = android.text.format.DateFormat.getTimeFormat(context).format(new Date(updatedAt));
+            String date = android.text.format.DateFormat.getDateFormat(context).format(new Date(updatedAt));
+            return context.getString(offline ? R.string.weather_cached : R.string.weather_updated, date + " " + time);
         }
 
         Weather asOffline() {
@@ -105,6 +110,7 @@ public final class WeatherService implements AutoCloseable {
         }
     }
 
+    private final Context context;
     private final SharedPreferences prefs;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newFixedThreadPool(2);
@@ -120,6 +126,7 @@ public final class WeatherService implements AutoCloseable {
     private Weather cached;
 
     public WeatherService(Context context) {
+        this.context = context;
         prefs = context.getApplicationContext().getSharedPreferences("weather", Context.MODE_PRIVATE);
         connectivity = (ConnectivityManager) context.getApplicationContext()
                 .getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -168,14 +175,14 @@ public final class WeatherService implements AutoCloseable {
         final int searchId = ++searchGeneration;
         String term = query == null ? "" : query.trim();
         if (term.length() < 2) {
-            deliverSearch(searchId, callback, Collections.emptyList(), "请输入至少两个字；也可用城市拼音");
+            deliverSearch(searchId, callback, Collections.emptyList(), context.getString(R.string.query_short));
             return;
         }
         io.execute(() -> {
             synchronized (this) { if (closed || searchGeneration != searchId) return; }
             try {
                 JSONObject response = request("https://geocoding-api.open-meteo.com/v1/search?name="
-                        + URLEncoder.encode(term, "UTF-8") + "&count=8&language=zh&format=json");
+                        + URLEncoder.encode(term, "UTF-8") + "&count=8&language=" + language() + "&format=json");
                 List<Location> matches = new ArrayList<>();
                 JSONArray results = response.optJSONArray("results");
                 if (results != null) for (int i = 0; i < results.length(); i++) {
@@ -188,9 +195,9 @@ public final class WeatherService implements AutoCloseable {
                     matches.add(new Location(name, label, o.getDouble("latitude"), o.getDouble("longitude")));
                 }
                 deliverSearch(searchId, callback, Collections.unmodifiableList(matches),
-                        matches.isEmpty() ? "未找到城市，请试试拼音或英文名" : null);
+                        matches.isEmpty() ? context.getString(R.string.city_not_found) : null);
             } catch (Exception e) {
-                deliverSearch(searchId, callback, Collections.emptyList(), "城市搜索暂不可用，请检查网络后重试");
+                deliverSearch(searchId, callback, Collections.emptyList(), context.getString(R.string.city_search_error));
             }
         });
     }
@@ -244,7 +251,7 @@ public final class WeatherService implements AutoCloseable {
                         daily.getJSONArray("temperature_2m_max").getDouble(0),
                         daily.getJSONArray("temperature_2m_min").getDouble(0),
                         current.getInt("weather_code"), System.currentTimeMillis(), false,
-                        byIp ? "IP 近似定位" : "手动城市");
+                        byIp ? "ip" : "manual");
                 synchronized (this) {
                     if (closed || generation != requestGeneration) return;
                     prefs.edit().putString(cacheKey(), weather.json().toString()).apply();
@@ -261,9 +268,13 @@ public final class WeatherService implements AutoCloseable {
                     cached = fallback;
                 }
                 deliver(requestGeneration, callback, fallback, locating
-                        ? "IP 定位失败，请检查网络或手动选择城市" : "天气更新失败，请检查网络");
+                        ? context.getString(R.string.location_error) : context.getString(R.string.weather_error));
             }
         });
+    }
+
+    private String language() {
+        return "zh".equals(context.getResources().getConfiguration().getLocales().get(0).getLanguage()) ? "zh" : "en";
     }
 
     private Network currentNetwork() {
@@ -272,11 +283,12 @@ public final class WeatherService implements AutoCloseable {
     }
 
     private Location locateIp() throws Exception {
-        JSONObject result = request("https://ipwho.is/?lang=zh-CN&fields=success,city,region,latitude,longitude");
+        JSONObject result = request("https://ipwho.is/?lang=" + (language().equals("zh") ? "zh-CN" : "en")
+                + "&fields=success,city,region,latitude,longitude");
         String city = result.optString("city", "").trim();
         if (!result.optBoolean("success") || city.isEmpty())
             throw new java.io.IOException("IP location unavailable");
-        return new Location(city, city + " · IP 近似定位",
+        return new Location(city, context.getString(R.string.ip_city_label, city),
                 result.getDouble("latitude"), result.getDouble("longitude"));
     }
 
@@ -328,28 +340,28 @@ public final class WeatherService implements AutoCloseable {
         }
     }
 
-    public static String describe(int code) {
+    public static String describe(Context context, int code) {
         switch (code) {
-            case 0: return "晴";
-            case 1: return "大部晴朗";
-            case 2: return "多云";
-            case 3: return "阴";
-            case 45: case 48: return "雾";
-            case 51: case 53: case 55: return "毛毛雨";
-            case 56: case 57: return "冻毛毛雨";
-            case 61: return "小雨";
-            case 63: return "中雨";
-            case 65: return "大雨";
-            case 66: case 67: return "冻雨";
-            case 71: return "小雪";
-            case 73: return "中雪";
-            case 75: return "大雪";
-            case 77: return "米雪";
-            case 80: case 81: case 82: return "阵雨";
-            case 85: case 86: return "阵雪";
-            case 95: return "雷雨";
-            case 96: case 99: return "雷雨伴冰雹";
-            default: return "天气未知";
+            case 0: return context.getString(R.string.weather_clear);
+            case 1: return context.getString(R.string.weather_mostly_clear);
+            case 2: return context.getString(R.string.weather_partly_cloudy);
+            case 3: return context.getString(R.string.weather_overcast);
+            case 45: case 48: return context.getString(R.string.weather_fog);
+            case 51: case 53: case 55: return context.getString(R.string.weather_drizzle);
+            case 56: case 57: return context.getString(R.string.weather_freezing_drizzle);
+            case 61: return context.getString(R.string.weather_light_rain);
+            case 63: return context.getString(R.string.weather_rain);
+            case 65: return context.getString(R.string.weather_heavy_rain);
+            case 66: case 67: return context.getString(R.string.weather_freezing_rain);
+            case 71: return context.getString(R.string.weather_light_snow);
+            case 73: return context.getString(R.string.weather_snow);
+            case 75: return context.getString(R.string.weather_heavy_snow);
+            case 77: return context.getString(R.string.weather_snow_grains);
+            case 80: case 81: case 82: return context.getString(R.string.weather_showers);
+            case 85: case 86: return context.getString(R.string.weather_snow_showers);
+            case 95: return context.getString(R.string.weather_thunderstorm);
+            case 96: case 99: return context.getString(R.string.weather_hail);
+            default: return context.getString(R.string.weather_unknown);
         }
     }
 
