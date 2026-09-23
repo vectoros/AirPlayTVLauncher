@@ -8,3 +8,17 @@ local.properties
 .DS_Store
 artifacts/
 docs/LOCAL_DEVICE.md
+
+# Private experiment notes and local credentials
+docs/*_LOCAL.md
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+
+# Downloaded / built Android packages
+*.apk
+*.apks
+*.apkm
+*.aab
