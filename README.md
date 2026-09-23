@@ -1,10 +1,12 @@
 # Aurora TV
 
+<img src="docs/images/ic_launcher.svg" alt="Aurora TV 图标" width="128" height="128">
+
 一个面向 Android TV / Sony 电视的轻量桌面，以 Apple TV 首页的简洁观感为设计参考：大尺寸应用卡片、遥控器焦点动画、玻璃面板和缓慢流动的渐变山峦。项目独立开发，与 Apple、Sony、哔哩哔哩无关联。
 
 ![Sony 电视真机首页](docs/images/home.png)
 
-文档：[开发与维护记录](docs/DEVELOPMENT.md) · [真机验证记录](docs/VERIFICATION.md) · [GMS 实验记录](docs/GMS_EXPERIMENTS.md) · [开源审查](docs/OPEN_SOURCE_REVIEW.md)
+文档：[贡献指南](AGENTS.md) · [图标设计](docs/ICON.md) · [开发与维护记录](docs/DEVELOPMENT.md) · [真机验证记录](docs/VERIFICATION.md) · [GMS 实验记录](docs/GMS_EXPERIMENTS.md) · [开源审查](docs/OPEN_SOURCE_REVIEW.md)
 
 ## 功能
 
@@ -15,7 +17,15 @@
 - 三款原创渐变壁纸，以及本地相册多选照片轮播（最多 30 张）；淡入淡出、缓慢推拉、横向滑移三种效果，15 / 30 / 60 秒间隔，最高 25fps，离开桌面暂停。
 - Android 12 / API 31 及以上使用 RenderEffect 模糊壁纸形成玻璃效果；更低版本使用半透明面板降级。
 
-方向键移动焦点，确认键打开应用或输入源，菜单键打开设置。通过「壁纸与照片轮播」和「天气与定位」配置新功能，详见[照片与天气使用说明](docs/PHOTOS_AND_WEATHER.md)。
+方向键移动焦点，首页按下键展开全部应用列表，返回键收起；确认键打开应用或输入源，菜单键打开设置。通过「壁纸与照片轮播」和「天气与定位」配置新功能，详见[照片与天气使用说明](docs/PHOTOS_AND_WEATHER.md)。
+
+## 图标与电视横幅
+
+应用图标采用深蓝极光背景、玻璃面板与 A 形山峰，与桌面的玻璃风格保持一致。图标及电视横幅均为原生矢量资源，玻璃质感由静态渐变和高光表现，无需额外运行时依赖。
+
+<img src="docs/images/banner.svg" alt="Aurora TV 应用横幅" width="320" height="180">
+
+资源位置、可编辑 SVG 和维护说明见 [图标设计](docs/ICON.md)。新资源已通过 Debug 构建和 Android Lint；目标电视暂时网络不可达，尚未部署验证。
 
 ## 构建
 
