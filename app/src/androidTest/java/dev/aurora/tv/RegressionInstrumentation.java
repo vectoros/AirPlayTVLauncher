@@ -25,7 +25,13 @@ public final class RegressionInstrumentation extends Instrumentation {
         try {
             sandbox = new IsolatedContext(getTargetContext());
             testPhotos();
-            report.append("PASS: ").append(checks).append(" photo regression checks\n");
+            Throwable[] schedulingFailure = new Throwable[1];
+            runOnMainSync(() -> {
+                try { testWallpaperScheduling(); }
+                catch (Throwable error) { schedulingFailure[0] = error; }
+            });
+            if (schedulingFailure[0] != null) throw new AssertionError(schedulingFailure[0]);
+            report.append("PASS: ").append(checks).append(" regression checks\n");
         } catch (Throwable failure) {
             result = Activity.RESULT_CANCELED;
             StringWriter trace = new StringWriter(); failure.printStackTrace(new PrintWriter(trace));
@@ -82,6 +88,47 @@ public final class RegressionInstrumentation extends Instrumentation {
         onDisk = new File(sandbox.getFilesDir(), "wallpapers").listFiles();
         expect(onDisk != null && onDisk.length == 0 && Arrays.equals(wideHash, hash(wide)) && Arrays.equals(turnedHash, hash(turned)),
                 "Clear removes app copies and leaves original photo bytes unchanged");
+    }
+
+    /** Exercise hold/transition boundaries without waiting for a real slideshow. */
+    private void testWallpaperScheduling() throws Exception {
+        WallpaperView view = new WallpaperView(sandbox);
+        Bitmap first = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
+        Bitmap next = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888);
+        try {
+            setField(view, "photoMode", true);
+            setField(view, "currentPhoto", first);
+            setField(view, "nextPhoto", next);
+            setField(view, "effect", 0);
+            setField(view, "intervalSeconds", 15);
+            java.lang.reflect.Method delay = WallpaperView.class.getDeclaredMethod("nextFrameDelay");
+            java.lang.reflect.Method advance = WallpaperView.class.getDeclaredMethod("advancePhotos", long.class);
+            delay.setAccessible(true); advance.setAccessible(true);
+            expect((long) delay.invoke(view) == 1000, "Static photo uses slow polling");
+            setField(view, "photoElapsed", 14980L);
+            expect((long) delay.invoke(view) == 20, "Hold timer preserves the transition deadline");
+            advance.invoke(view, 20L);
+            expect((long) getField(view, "transitionElapsed") == 0, "Idle tick does not skip transition start");
+            expect((long) delay.invoke(view) == 40, "Transition returns to animation cadence");
+            advance.invoke(view, 1800L);
+            expect(getField(view, "currentPhoto") == next && !view.isTransitioning(), "Transition publishes the incoming photo");
+            expect((long) delay.invoke(view) == 1000, "Finished transition returns to idle cadence");
+            setField(view, "effect", 1);
+            expect((long) delay.invoke(view) == 40, "Zoom stays animated even for a single photo");
+            setField(view, "currentPhoto", null);
+            setField(view, "effect", 0);
+            expect((long) delay.invoke(view) == 40, "Procedural fallback stays animated");
+        } finally {
+            view.close(); first.recycle(); next.recycle();
+        }
+    }
+    private void setField(Object target, String name, Object value) throws Exception {
+        java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true); field.set(target, value);
+    }
+    private Object getField(Object target, String name) throws Exception {
+        java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
+        field.setAccessible(true); return field.get(target);
     }
 
     private Outcome importPhotos(List<Uri> uris) throws InterruptedException {

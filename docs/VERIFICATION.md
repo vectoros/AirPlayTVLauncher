@@ -1,3 +1,10 @@
+# 兼容性与性能审查（2026-09-24）
+
+- README 新增系统版本列表，详细能力边界见 [兼容性与性能](COMPATIBILITY_AND_PERFORMANCE.md)。只有 Sony Android 12 有历史实机证据。
+- 修复静态照片等待期间的重复绘制和玻璃采样，以及初次打开首页的重复应用枚举/卡片构建。保留过渡结束时的最终玻璃刷新。
+- `assembleDebug assembleDebugAndroidTest lintDebug` 成功；新增 8 项轮播调度检查完成编译，尚未在设备运行。
+- 目标电视网络不可达，未部署、未获得优化后的 CPU / 内存 / 帧耗时数据；以下历史数据不能视为本次基准。
+
 # v0.5.0 常驻接收、应用抽屉及设备清理（2026-09-21）
 
 - Launcher assembleDebug / lintDebug成功（0 errors / 14 warnings）。Aurora AirPlay修改源码构建成功，并从固定上游+补丁通过scripts/build-airplay.sh重新生成成功；产物只含armeabi-v7a协议库，复用四个已校验上游native二进制。
