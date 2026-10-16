@@ -1,3 +1,12 @@
+# 最新版本 Sony 部署（2026-09-24）
+
+- 基于当时的最新功能版本重新构建并覆盖安装 Launcher 与 Aurora AirPlay；两包均返回 Success，设备 APK 的 SHA-256 与构建产物一致，未清除用户数据。
+- 默认 HOME 仍为 `dev.aurora.tv/.MainActivity`。首页界面树包含中文日期、天气、应用与四个 HDMI 入口；未更改系统语言。截图返回黑色，本次不据此声称完成视觉验收。
+- AirPlay 服务 `isForeground=true`，RTSP OPTIONS 返回 200 OK；没有执行 Apple 设备实际音视频投屏。
+- Sony Android 12 上 29 项 instrumentation 检查全部通过；测试使用隔离照片和偏好。完成后重新启动 Launcher 回到首页。
+- 修复接收端重复构建时新增中文资源残留导致补丁失败的问题；清理仅限忽略构建目录中的生成文件。
+- 本机 ADB 初次报告网络不可达，但 ping 和端口检查正常，重启无设备连接的 ADB 服务后恢复。原始日志及截图位于忽略目录，不记录设备地址于公共文档。
+
 # 中英文显示验证（2026-09-24）
 
 - Launcher 构建、测试 APK 编译和 Lint 成功；AirPlay 中文资源补丁构建成功。

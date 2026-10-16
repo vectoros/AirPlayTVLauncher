@@ -13,6 +13,9 @@ if [[ ! -f "$source_dir/app/build.gradle.kts" ]]; then
 fi
 [[ $(git -C "$source_dir" rev-parse HEAD) == "$expected_source" ]] || { echo 'Unexpected upstream revision' >&2; exit 1; }
 mkdir -p "$work"
+# The upstream archive cannot overwrite this file added by our patch on a prior build.
+rm -f "$work/app/src/main/res/values-zh/strings.xml" \
+    "$work/app/src/main/res/values-zh/strings.xml.rej"
 # Export only tracked upstream files, then apply our reviewable source patch.
 git -C "$source_dir" archive "$expected_source" | tar -x -C "$work"
 patch --batch --forward -p1 -d "$work" < patches/airplay-resident.patch

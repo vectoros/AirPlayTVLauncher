@@ -39,3 +39,7 @@ adb -s SERIAL shell cmd locale set-app-locales dev.aurora.tv --user 0 --locales 
 ```
 
 Android 8–12 使用系统语言设置切换。还应检查大字体、长城市名、离线错误信息、权限拒绝和遥控器焦点；第三方应用是否提供对应语言标签由其自身资源决定。
+
+## 同日 Sony 部署补充
+
+已在 Sony Android 12 覆盖安装最新 Launcher 和接收端，29 项 instrumentation 检查全部通过。首页中文界面树与服务状态确认正常；未切换电视系统语言，截图返回黑色，英文布局仍以模拟器检查为依据。RTSP 检查通过，不等同于 AirPlay 音视频验收。详见 [部署记录](VERIFICATION.md)。
