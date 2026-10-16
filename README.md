@@ -2,6 +2,8 @@
 
 <img src="docs/images/ic_launcher.svg" alt="Aurora TV 图标" width="128" height="128">
 
+公开仓库只展示不含个人数据的图形资源；包含实际定位城市和应用列表的设备截图已撤下。请勿将个人天气缓存、相册、账号信息或调试日志加入仓库。清理范围和 Git 历史状态见 [开源审查](docs/OPEN_SOURCE_REVIEW.md)。
+
 一个面向 Android TV / Sony 电视的轻量桌面，以 Apple TV 首页的简洁观感为设计参考：大尺寸应用卡片、遥控器焦点动画、玻璃面板和缓慢流动的渐变山峦。项目独立开发，与 Apple、Sony、哔哩哔哩无关联。
 
 文档：[贡献指南](AGENTS.md) · [图标设计](docs/ICON.md) · [开发与维护记录](docs/DEVELOPMENT.md) · [真机验证记录](docs/VERIFICATION.md) · [GMS 实验记录](docs/GMS_EXPERIMENTS.md) · [开源审查](docs/OPEN_SOURCE_REVIEW.md)

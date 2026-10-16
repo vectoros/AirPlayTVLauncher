@@ -16,6 +16,20 @@ docs/*_LOCAL.md
 !.env.example
 *.p12
 *.pfx
+*.pem
+*.key
+.git-credentials
+credentials.json
+service-account*.json
+*.log
+*.log.*
+
+# Withdrawn device screenshots contained location / installed-app information.
+/docs/images/home.png
+/docs/images/apps-drawer.png
+/docs/images/liquid-on.png
+/docs/images/liquid-off.png
+/docs/images/photo-wallpaper.png
 
 # Downloaded / built Android packages
 *.apk
