@@ -108,7 +108,7 @@ public final class LauncherRepository {
             for (ResolveInfo info : packages.queryIntentActivities(
                     new Intent(Intent.ACTION_MAIN).addCategory(category), 0)) {
                 String name = info.activityInfo.packageName;
-                if (name.equals(context.getPackageName()) || found.containsKey(name)
+                if (name.equals(context.getPackageName()) || name.equals(AirPlayCompanion.PACKAGE) || found.containsKey(name)
                         || !info.activityInfo.exported || !info.activityInfo.enabled) continue;
                 try {
                     boolean bilibili = false;

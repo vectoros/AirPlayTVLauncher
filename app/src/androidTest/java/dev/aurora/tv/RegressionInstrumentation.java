@@ -12,13 +12,18 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** Zero-dependency device regression suite. Never touches the user's album or preferences. */
+/** Zero-dependency suite. Photo fixtures are isolated; opt-in AirPlay tests restore receiver settings. */
 public final class RegressionInstrumentation extends Instrumentation {
     private final StringBuilder report = new StringBuilder();
     private IsolatedContext sandbox;
     private int checks;
+    private boolean checkAirPlay;
 
-    @Override public void onCreate(Bundle arguments) { super.onCreate(arguments); start(); }
+    @Override public void onCreate(Bundle arguments) {
+        super.onCreate(arguments);
+        checkAirPlay = arguments != null && Boolean.parseBoolean(arguments.getString("airplay", "false"));
+        start();
+    }
     @Override public void onStart() {
         Bundle results = new Bundle();
         int result = Activity.RESULT_OK;
@@ -32,6 +37,7 @@ public final class RegressionInstrumentation extends Instrumentation {
                 catch (Throwable error) { schedulingFailure[0] = error; }
             });
             if (schedulingFailure[0] != null) throw new AssertionError(schedulingFailure[0]);
+            if (checkAirPlay) testAirPlayControl();
             report.append("PASS: ").append(checks).append(" regression checks\n");
         } catch (Throwable failure) {
             result = Activity.RESULT_CANCELED;
@@ -154,6 +160,71 @@ public final class RegressionInstrumentation extends Instrumentation {
     private Object getField(Object target, String name) throws Exception {
         java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true); return field.get(target);
+    }
+
+    /** Opt-in paired-device test; restore original settings and never interrupt an active sender. */
+    private void testAirPlayControl() throws Exception {
+        Context context = getTargetContext();
+        android.net.Uri uri = android.net.Uri.parse("content://dev.aurora.airplay.control");
+        Bundle original = context.getContentResolver().call(uri, "status", null, null);
+        expect(original != null && original.getInt("protocol") == 1, "Paired receiver control protocol is available");
+        expect(new LauncherRepository(context).apps().stream().noneMatch(app -> AirPlayCompanion.PACKAGE.equals(app.packageName)), "Managed receiver stays out of the normal app grid");
+        if (original.getBoolean("casting")) {
+            report.append("SKIP AirPlay state changes: a sender is active\n");
+            return;
+        }
+        Bundle restore = new Bundle();
+        restore.putBoolean("enabled", original.getBoolean("enabled"));
+        restore.putString("name", original.getString("name"));
+        restore.putBoolean("require_pin", original.getBoolean("require_pin"));
+        // HOME may already be resumed by the system; singleTask reuse never completes startActivitySync.
+        runOnMainSync(() -> context.startActivity(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+        waitForIdleSync();
+        try {
+            Bundle off = new Bundle(); off.putBoolean("enabled", false);
+            AirPlayCompanion.State disabled = configureAirPlay(context, off);
+            expect(disabled.compatible && !disabled.enabled, "Master switch persists off");
+            awaitAirPlay(context, false);
+            AirPlayCompanion.ensureStarted(context);
+            Thread.sleep(400);
+            expect(!context.getContentResolver().call(uri, "status", null, null).getBoolean("enabled"), "Home ensure does not re-enable AirPlay");
+            context.startForegroundService(new Intent("io.github.jqssun.airplay.START_SERVER")
+                    .setComponent(new ComponentName(AirPlayCompanion.PACKAGE, "io.github.jqssun.airplay.service.AirPlayService")));
+            Thread.sleep(400);
+            awaitAirPlay(context, false);
+            expect(true, "A direct start refuses persisted off state");
+            Bundle config = new Bundle(); config.putString("name", "Aurora TV Test"); config.putBoolean("require_pin", true);
+            AirPlayCompanion.State changed = configureAirPlay(context, config);
+            expect("Aurora TV Test".equals(changed.name) && changed.requirePin && !changed.enabled, "Name and PIN persist without enabling reception");
+            boolean rejected = false;
+            Bundle invalid = new Bundle(); invalid.putString("name", "\n");
+            try { context.getContentResolver().call(uri, "configure", null, invalid); }
+            catch (IllegalArgumentException expected) { rejected = true; }
+            expect(rejected, "Invalid names are rejected before saving");
+            Bundle on = new Bundle(); on.putBoolean("enabled", true);
+            expect(configureAirPlay(context, on).enabled, "Master switch persists on");
+            awaitAirPlay(context, true);
+            expect(true, "Receiver returns to RUNNING after enabling");
+        } finally {
+            configureAirPlay(context, restore);
+            awaitAirPlay(context, restore.getBoolean("enabled"));
+        }
+    }
+    private AirPlayCompanion.State configureAirPlay(Context context, Bundle change) throws Exception {
+        CountDownLatch ready = new CountDownLatch(1);
+        AirPlayCompanion.State[] result = new AirPlayCompanion.State[1];
+        AirPlayCompanion.configure(context, change, state -> { result[0] = state; ready.countDown(); });
+        if (!ready.await(12, TimeUnit.SECONDS)) throw new AssertionError("AirPlay control timed out");
+        return result[0];
+    }
+    private void awaitAirPlay(Context context, boolean running) throws Exception {
+        for (int i = 0; i < 100; i++) {
+            Bundle status = context.getContentResolver().call(android.net.Uri.parse("content://dev.aurora.airplay.control"), "status", null, null);
+            if (status != null && status.getBoolean("enabled") == running
+                    && (running ? "RUNNING" : "STOPPED").equals(status.getString("state"))) return;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("AirPlay did not reach the expected state");
     }
 
     private Outcome importPhotos(List<Uri> uris) throws InterruptedException {

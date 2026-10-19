@@ -10,7 +10,7 @@
 | 第一个应用是哔哩哔哩 TV | B站固定首位并默认聚焦，未安装时保留提示入口 |
 | 首页显示当天的天气 | 默认公网 IP 自动定位，支持手动城市、分模式缓存和更新时间 |
 | 动态壁纸 | 原创 Canvas 渐变山峦及本地照片轮播，三种过渡效果 |
-| 代码简洁、便于开源 | Launcher 使用九个 Java 文件及 Android 原生 API，无第三方运行时依赖；独立 AirPlay 接收端另计 |
+| 代码简洁、便于开源 | Launcher 使用十个 Java 文件及 Android 原生 API，无第三方运行时依赖；独立 AirPlay 接收端另计 |
 
 ## 关键实现选择
 
@@ -32,16 +32,16 @@
 建议按功能创建分支，并将相关文档与代码一起提交：
 
 ```sh
-git switch -c feature/short-description
+git switch -c codex/short-description
 ./gradlew assembleDebug lintDebug
 git diff --check
 git add <changed-files>
-git commit -m "Describe the change"
+git commit -m "feat: describe the change"
 ```
 
 提交前检查 `git diff --cached`，确认没有设备地址、凭据、本机路径或签名文件。测试与限制更新到 [VERIFICATION.md](VERIFICATION.md)，用户可见的功能和部署说明更新到 [README.md](../README.md)。未修改运行代码时，不必重复执行真机测试。
 
-GitHub Actions 已配置构建、Lint 和调试 APK 上传。当前仅建立本地仓库，远端仓库与发布版本尚未创建；调试 APK 不应被描述为正式签名的发行版。
+GitHub Actions 已配置构建、Lint 和调试 APK 上传。代码已同步至 GitHub；正式发行版尚未创建，调试 APK 不应被描述为正式签名的发行版。
 
 ## 后续验证
 
@@ -68,3 +68,9 @@ GitHub Actions 已配置构建、Lint 和调试 APK 上传。当前仅建立本�
 用AppsDrawer独立Dialog限制遥控器焦点，首页DPAD_DOWN打开；包含HDMI快捷入口，返回恢复原焦点。AirPlayCompanion通过签名受保护的导出Service调用，onResume和onNewIntent均确保服务启动。接收端补丁保留GPL许可及上游子模块固定版本，未混入Launcher MIT代码。
 
 开发APK构建只重编译修改的Kotlin/Java/资源，原生协议库来自固定校验的官方APK；可选完全源码编译流程见patches/README.md。两个APK同签名是跨包控制的必要条件。
+
+## v0.6.0 自动投屏与设置
+
+AirPlaySettings 提供原生遥控器设置面板，AirPlayCompanion 异步通过同签名 Provider 配置独立 GPL 接收器。唯一总开关存于接收器，开机、桌面确保启动、失败重试和手动 Stop 均遵守它。投屏使用私有 Activity 别名，真实会话才全屏，断开自动退出；关闭自动 PiP，默认网络变化后防抖重建服务。高级设置移除相互冲突的启动和后台开关。
+
+参考 DiPlay 的启动与常驻会话架构，未引入其协议或认证材料。固定上游和 GPL 补丁边界不变。构建、配对签名、可选跨包及接收器测试见 [AIRPLAY.md](AIRPLAY.md)，真机结果与未验证项见 [VERIFICATION.md](VERIFICATION.md)。

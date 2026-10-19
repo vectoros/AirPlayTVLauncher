@@ -1,3 +1,21 @@
+# v0.6.0 自动投屏与设置验证（2026-10-19）
+
+设备为既有 Sony BRAVIA / Android 12 / API 31。Launcher 0.6.0 与接收器 0.0.31-aurora.2 已覆盖安装，设备 APK 与当前构建产物 SHA-256 一致，未清除用户数据。
+
+- Launcher `assembleDebug assembleDebugAndroidTest lintDebug` 成功，Lint 0 errors / 11 warnings；接收器 Debug 与测试 APK 构建成功。重复构建可重新应用完整补丁，上游子模块保持固定且无修改。
+- Launcher 38 项真机回归全部通过：原有 29 项照片、语言和轮播调度，加 9 项跨包协议、应用过滤、关闭持久化、防误启、名称 / PIN 校验与重新开启。测试恢复原接收器配置；真实投屏活跃时会跳过状态变更。
+- 接收器 11 项真机流程检查全部通过：模拟 TCP 连接不拉界面；视频尺寸回调进入私有播放入口；断开退出并保持接收；界面仍绑定时总开关能释放服务；关闭后启动广播无效；拒绝前台启动时仍满足 Android 时限；高级设置可显式重新开启。模拟回调不验证实际解码、音画质量或 Apple 协议兼容性。
+- 修复上述测试暴露的两个绑定边界：仅 stopService 不足以停止绑定实例；拒绝前台启动仍需先调用 startForeground，否则会在超时后崩溃。延时 6.5 秒的绑定检查已覆盖后一情况。Launcher 测试改用异步打开已存在 HOME，避免 singleTask 复用导致测试等待。
+- 中文原生设置面板已检查；143 项中英文资源键及字符串格式参数一致。测试未切换电视系统语言，未把英文布局视为本次人工验收项。
+- ADB shell 访问控制 Provider 被签名权限拒绝；Launcher 同签名调用成功。自动播放入口不导出，配置响应不包含 PIN、发送端地址或媒体信息。
+- 部署后的真实镜像会话中，观察到自动播放 Activity、视频尺寸变化、AAC 解码与音频输出初始化；发送端断开后前台恢复 Launcher。未评价画面观感、同步、延迟或所有 Apple 设备 / 应用兼容性。收尾修复后的自动进入 / 退出路径由上述模拟回归覆盖。
+- 从 Launcher 设置关闭 AirPlay 后，端口停止监听；整机重启后仍无接收服务及监听端口，Aurora HOME 正常启动。
+- 用遥控器方向 / 确认键从集成设置重新开启，开关和 RTSP 检查通过。再次整机重启，不发送启动或 HOME 命令，接收器由开机广播自动启动（recentCallingPackage 为接收器自身）、isForeground=true，RTSP 返回 200；前台与默认 HOME 均为 Aurora。启动早期端口尚未就绪，服务完成初始化后通过；纯探测未打开播放界面。最终保持 AirPlay 开启。Mac Bonjour 同时发现 Aurora TV 的 `_airplay._tcp` 与 `_raop._tcp`。
+
+本轮发现原厂投屏服务在先前固件更新中恢复并广播。沿用此前设备清理要求，对用户 0 停用乐播并停止进程，保留系统底包及数据；Aurora 的 RTSP 仍通过。必要时可用 `adb -s SERIAL shell pm enable --user 0 com.hpplay.happyplay.aw` 恢复。
+
+真实网络切换、深度待机、长期稳定性、DRM 和完整 AirPlay 2 不在本轮验收范围。原始日志、界面树和 APK 仅保存于忽略目录，未将设备地址、定位、账号或截图写入公共资料。操作和构建见 [AirPlay 说明](AIRPLAY.md)。
+
 # 最新版本 Sony 部署（2026-09-24）
 
 - 基于当时的最新功能版本重新构建并覆盖安装 Launcher 与 Aurora AirPlay；两包均返回 Success，设备 APK 的 SHA-256 与构建产物一致，未清除用户数据。

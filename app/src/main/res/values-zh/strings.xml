@@ -2,7 +2,6 @@
 <resources>
     <string name="about">"关于"</string>
     <string name="about_message">"简洁，回到观看本身。\n\n原创动态壁纸 · MIT License\n天气：Open-Meteo / CC BY 4.0\nIP 定位：ipwho.is · 城市级近似位置\n城市搜索：GeoNames\n本地照片仅在电视中保存，不上传。\n\n方向键移动 · 确认键打开\n菜单键打开设置"</string>
-    <string name="airplay_help">"桌面启动时会自动开启接收服务，同一局域网的 iPhone、iPad 或 Mac 可通过屏幕镜像连接。\n\n打开接收端可修改名称和配对 PIN。服务后台常驻，返回桌面会确保服务启动。\n\n不支持受 DRM 保护的视频；多房间同步音频不作兼容保证。"</string>
     <string name="airplay_missing">"接收服务尚未安装，请按项目文档安装 AirPlay Server。"</string>
     <string name="airplay_receiver">"AirPlay 接收"</string>
     <string name="album_empty">"相册中没有照片。请将照片放入电视 Pictures / DCIM，或从文件 / USB 选择。"</string>
@@ -58,7 +57,6 @@
     <string name="next_photo">"下一张照片"</string>
     <string name="no_city">"没有找到城市"</string>
     <string name="ok">"好"</string>
-    <string name="open_receiver">"打开接收端"</string>
     <string name="palette_coast">"极光海岸"</string>
     <string name="palette_dusk">"紫暮山峦"</string>
     <string name="palette_gold">"暮色流金"</string>
@@ -131,4 +129,22 @@
     <plurals name="selected_photos">
         <item quantity="other">已选择 %1$d 张照片</item>
     </plurals>
+    <string name="airplay_loading">正在读取 AirPlay 状态…</string>
+    <string name="airplay_enabled">启用 AirPlay</string>
+    <string name="airplay_require_pin">每次连接需要配对码</string>
+    <string name="airplay_settings_help">开启后随开机自动接收。实际投屏时自动全屏，结束后返回桌面；关闭会结束投屏，并停止开机和后台接收。</string>
+    <string name="airplay_allow_display">允许投屏自动显示</string>
+    <string name="airplay_advanced">接收端高级设置</string>
+    <string name="airplay_refresh">刷新状态</string>
+    <string name="airplay_device_name">设备名称 · %1$s</string>
+    <string name="airplay_update_required">请更新配套的 AirPlay 接收端，并确保两个应用签名一致。</string>
+    <string name="airplay_failed">接收服务暂不可用，请刷新状态或重新开启。</string>
+    <string name="airplay_off">AirPlay 已关闭，重启后保持关闭。</string>
+    <string name="airplay_permission_needed">已开启。请允许投屏自动显示，以便连接时直接播放。</string>
+    <string name="airplay_ready">AirPlay 已就绪，可从同一局域网的 Apple 设备投屏。</string>
+    <string name="airplay_starting">AirPlay 正在启动或恢复连接…</string>
+    <string name="airplay_change_warning">修改此设置会结束当前投屏；接收服务随后自动恢复。</string>
+    <string name="airplay_name_title">AirPlay 设备名称</string>
+    <string name="airplay_invalid_name">请输入 1–40 个有效字符。</string>
+    <string name="airplay_casting">正在投屏，关闭 AirPlay 将结束当前会话。</string>
 </resources>

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 serial=${1:?Usage: scripts/install-airplay.sh DEVICE_SERIAL}
 scripts/build-airplay.sh
 ./gradlew assembleDebug
-adb -s "$serial" install -r artifacts/Aurora-AirPlay-0.0.31-aurora.1-debug.apk
+adb -s "$serial" install -r artifacts/Aurora-AirPlay-0.0.31-aurora.2-debug.apk
 adb -s "$serial" install -r app/build/outputs/apk/debug/app-debug.apk
 adb -s "$serial" shell appops set dev.aurora.airplay SYSTEM_ALERT_WINDOW allow
 # Retire the previous companion's running service to avoid port/name collisions.

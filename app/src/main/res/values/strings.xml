@@ -2,7 +2,6 @@
 <resources>
     <string name="about">"About"</string>
     <string name="about_message">"Keep it simple. Enjoy watching.\n\nOriginal animated wallpapers · MIT License\nWeather: Open-Meteo / CC BY 4.0\nIP location: ipwho.is · approximate city\nCity search: GeoNames\nPhotos stay on this TV and are never uploaded.\n\nArrow keys to navigate · OK to open\nMenu to open settings"</string>
-    <string name="airplay_help">"The receiver starts with the launcher. Connect an iPhone, iPad or Mac on the same local network using Screen Mirroring.\n\nOpen the receiver to change its name or pairing PIN. It runs in the background; returning home ensures the service starts.\n\nDRM-protected video is not supported. Multi-room audio synchronization is not guaranteed."</string>
     <string name="airplay_missing">"The receiver is not installed. Follow the project guide to install AirPlay Server."</string>
     <string name="airplay_receiver">"AirPlay receiver"</string>
     <string name="album_empty">"No photos found. Copy photos to Pictures / DCIM on your TV, or use Files / USB."</string>
@@ -58,7 +57,6 @@
     <string name="next_photo">"Next photo"</string>
     <string name="no_city">"No cities found"</string>
     <string name="ok">"OK"</string>
-    <string name="open_receiver">"Open receiver"</string>
     <string name="palette_coast">"Aurora Coast"</string>
     <string name="palette_dusk">"Violet Peaks"</string>
     <string name="palette_gold">"Golden Dusk"</string>
@@ -133,4 +131,22 @@
         <item quantity="one">Selected %1$d photo</item>
         <item quantity="other">Selected %1$d photos</item>
     </plurals>
+    <string name="airplay_loading">Reading AirPlay status…</string>
+    <string name="airplay_enabled">Enable AirPlay</string>
+    <string name="airplay_require_pin">Require a PIN for each connection</string>
+    <string name="airplay_settings_help">When enabled, AirPlay starts at boot. Casting opens fullscreen and returns home when it ends. Turning it off ends casting and disables background and boot reception.</string>
+    <string name="airplay_allow_display">Allow automatic playback display</string>
+    <string name="airplay_advanced">Advanced receiver settings</string>
+    <string name="airplay_refresh">Refresh status</string>
+    <string name="airplay_device_name">Device name · %1$s</string>
+    <string name="airplay_update_required">Update the AirPlay receiver and use matching signatures for both apps.</string>
+    <string name="airplay_failed">AirPlay is unavailable. Refresh the status or turn it off and on again.</string>
+    <string name="airplay_off">AirPlay is off and will stay off after reboot.</string>
+    <string name="airplay_permission_needed">Enabled. Allow automatic playback display to open casting when a sender connects.</string>
+    <string name="airplay_ready">AirPlay is ready for Apple devices on the same local network.</string>
+    <string name="airplay_starting">AirPlay is starting or reconnecting…</string>
+    <string name="airplay_change_warning">Changing this setting ends the current casting session. The receiver restarts automatically.</string>
+    <string name="airplay_name_title">AirPlay device name</string>
+    <string name="airplay_invalid_name">Enter a valid name with 1–40 characters.</string>
+    <string name="airplay_casting">Casting is active. Turning AirPlay off will end the session.</string>
 </resources>

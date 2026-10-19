@@ -1,6 +1,6 @@
 # AOSP 兼容性与 TV 性能
 
-审查日期：2026-09-24。版本支持分为代码覆盖、构建检查和实机验证；三者不能互相替代。
+审查日期：2026-09-24；AirPlay 0.6.0 补充于 2026-10-19。版本支持分为代码覆盖、构建检查和实机验证；三者不能互相替代。
 
 ## 系统兼容列表
 
@@ -30,7 +30,7 @@ RenderEffect 从 [API 31](https://developer.android.com/reference/android/graphi
 - 照片需要 MediaStore 或可用的系统文档选择器；部分电视只有文件选择器占位程序。天气需要 HTTPS 网络，但 Launcher 不依赖 GMS，不要求 root。
 - Launcher 没有自带原生库，不受本项目 JNI ABI 限制；这不等于每个 ABI 都已测试。
 - 独立 AirPlay 接收端上游 `minSdk=24`、`targetSdk=36`，当前脚本的产物仅含 `armeabi-v7a` 原生库。与 Launcher 配套最低仍为 API 26；纯 64 位系统不能直接使用当前接收端产物。其他 ABI 必须另行构建并验证原生依赖，包括适用设备的 16KB 页兼容性。
-- 接收端要求与 Launcher 匹配的签名，启动由前台 Launcher 触发。Android 13+ 通知、14+ 前台服务及厂商后台策略需要逐机测试。仅 Sony Android 12 已验证发现和服务入口，实际 Apple 音视频、长时投屏仍未完成验收；不是完整 AirPlay 2 实现。
+- 接收端要求与 Launcher 匹配的签名，启动由前台 Launcher 触发。Android 13+ 通知、14+ 前台服务及厂商后台策略需要逐机测试。Sony Android 12 已验证发现、跨包开关控制和自动播放界面进出，并观察到真实镜像会话、视频尺寸和音频解码初始化；未完成音画同步、长时投屏及全部发送端验收。0.6.0 总开关关闭后阻止开机和桌面自启；不是完整 AirPlay 2 实现。
 
 ## 性能排查结果
 
@@ -52,9 +52,7 @@ RenderEffect 从 [API 31](https://developer.android.com/reference/android/graphi
 
 历史 Sony 1080p 短测：v0.1 静置 P50 12ms / P95 14ms、jank 4.70%；v0.3 连续焦点 P50 14ms / P95 34ms、jank 5.36%。这些是不同场景的旧版本数据，不能作为本次优化后的结果或稳定 60fps 保证，详见 [原始验证说明](VERIFICATION.md)。25fps 是背景调度上限，不是整机显示刷新率。
 
-本次 `assembleDebug assembleDebugAndroidTest lintDebug` 成功，Lint 0 errors / 14 warnings；新增 instrumentation 仅完成编译，未执行。
-
-本次目标电视返回 `No route to host`，未安装修改后的 APK，未获得新帧率、CPU、温度或 PSS 数据。新增调度回归检查覆盖等待截止点、完整过渡、结束后降频及推拉/失败降级，需连接设备后执行 instrumentation。
+2026-09-24 首轮审查时目标电视网络不可达，仅完成编译。后续部署已恢复：29 项基础回归（含 8 项轮播调度）在 Sony 通过；2026-10-19 的 0.6.0 构建 / Lint 成功，另有跨包控制及接收器会话流程检查通过，详见 [验证记录](VERIFICATION.md)。仍未取得按下述条件采集的新帧率、CPU、温度或 PSS 对比，不能以功能检查代替性能基准。
 
 设备恢复后，使用相同输出分辨率、壁纸、应用数量分别比较旧/新 APK；每组预热 30 秒、采样至少 60 秒。分别测试静置、连续焦点、开关抽屉、照片过渡、后台静置与 AirPlay 投屏；至少跑一组 30 分钟内存/温升观察。不要在真实相册上做破坏性测试。
 

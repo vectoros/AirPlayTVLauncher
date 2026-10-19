@@ -24,6 +24,7 @@ public final class MainActivity extends Activity {
     private TextView clock, date, weatherText, paletteText;
     private View firstApp;
     private AppsDrawer appsDrawer;
+    private AirPlaySettings airPlaySettings;
     private final java.util.List<LiquidGlassFrame> glassSurfaces = new ArrayList<>();
     private TvInputManager inputManager;
     private long lastGlassFrame;
@@ -200,22 +201,13 @@ public final class MainActivity extends Activity {
             if(n==3)repository.openSettings();
             if(n==4)repository.openInputSettings();
             if(n==5)showAirPlay();
-            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.5.0").setMessage(getString(R.string.about_message)).setPositiveButton(getString(R.string.ok),null).show();
+            if(n==6)new AlertDialog.Builder(this).setTitle("Aurora TV · 0.6.0").setMessage(getString(R.string.about_message)).setPositiveButton(getString(R.string.ok),null).show();
         }).setNegativeButton(getString(R.string.back),null).show();
     }
     private void showAirPlay() {
-        Intent receiver=getPackageManager().getLeanbackLaunchIntentForPackage(AirPlayCompanion.PACKAGE);
-        if(receiver==null)receiver=getPackageManager().getLaunchIntentForPackage(AirPlayCompanion.PACKAGE);
-        final Intent launch=receiver;
-        AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle(getString(R.string.airplay_receiver))
-            .setMessage(launch==null ? getString(R.string.airplay_missing) :
-                getString(R.string.airplay_help))
-            .setNegativeButton(getString(R.string.back),null);
-        if(launch!=null)dialog.setPositiveButton(getString(R.string.open_receiver),(d,n)->{
-            try { startActivity(launch); }
-            catch(ActivityNotFoundException|SecurityException e){Toast.makeText(this,getString(R.string.receiver_error),Toast.LENGTH_LONG).show();}
-        });
-        dialog.show();
+        if (airPlaySettings != null) airPlaySettings.close();
+        airPlaySettings = new AirPlaySettings(this);
+        airPlaySettings.show();
     }
     private void showGlassSettings() {
         new AlertDialog.Builder(this).setTitle(getString(R.string.liquid_glass))
@@ -315,9 +307,9 @@ public final class MainActivity extends Activity {
             weatherText.setTextSize(15);
         });
     }
-    @Override protected void onResume(){super.onResume();AirPlayCompanion.ensureStarted(this);populate();for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(true);wallpaper.setRunning(true);handler.post(tick);handler.post(weatherTick);if(inputManager!=null)inputManager.registerCallback(inputCallback,handler);}
+    @Override protected void onResume(){super.onResume();AirPlayCompanion.ensureStarted(this);if(airPlaySettings!=null)airPlaySettings.refreshIfVisible();populate();for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(true);wallpaper.setRunning(true);handler.post(tick);handler.post(weatherTick);if(inputManager!=null)inputManager.registerCallback(inputCallback,handler);}
     @Override protected void onPause(){handler.removeCallbacks(tick);handler.removeCallbacks(weatherTick);wallpaper.setRunning(false);for(LiquidGlassFrame glass:glassSurfaces)glass.setAnimationsEnabled(false);if(inputManager!=null)inputManager.unregisterCallback(inputCallback);super.onPause();}
-    @Override protected void onDestroy(){if(appsDrawer!=null)appsDrawer.dismissImmediately();for(LiquidGlassFrame glass:glassSurfaces)glass.dispose();weather.close();wallpaper.close();super.onDestroy();}
+    @Override protected void onDestroy(){if(airPlaySettings!=null)airPlaySettings.close();if(appsDrawer!=null)appsDrawer.dismissImmediately();for(LiquidGlassFrame glass:glassSurfaces)glass.dispose();weather.close();wallpaper.close();super.onDestroy();}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);AirPlayCompanion.ensureStarted(this);if(appsDrawer!=null)appsDrawer.dismissImmediately();populate();}
     @Override public void onBackPressed(){if(firstApp!=null)firstApp.requestFocus();}
     @Override public boolean dispatchKeyEvent(KeyEvent event){

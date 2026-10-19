@@ -1,61 +1,162 @@
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 2604452..353a282 100644
+index 2604452..8610c4f 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -12,7 +12,9 @@ val localProps = Properties().apply {
      rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
  }
- 
+
 -val allAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 +val prebuiltNative = providers.gradleProperty("prebuiltNative").orNull == "true"
 +
 +val allAbis = if (prebuiltNative) listOf("armeabi-v7a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64")
- 
+
  android {
      namespace = "io.github.jqssun.airplay"
-@@ -31,13 +33,13 @@ android {
+@@ -31,13 +33,14 @@ android {
      }
- 
+
      defaultConfig {
 -        applicationId = "io.github.jqssun.airplay"
 +        applicationId = "dev.aurora.airplay"
          minSdk = 24
          targetSdk = 36
-         versionCode = 31
+-        versionCode = 31
 -        versionName = "0.0.31"
-+        versionName = "0.0.31-aurora.1"
- 
++        versionCode = 32
++        versionName = "0.0.31-aurora.2"
++        testInstrumentationRunner = "io.github.jqssun.airplay.AuroraRegressionInstrumentation"
+
 -        externalNativeBuild {
 +        if (!prebuiltNative) externalNativeBuild {
              cmake {
                  arguments += "-DANDROID_STL=c++_shared"
                  arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
-@@ -45,7 +47,7 @@ android {
+@@ -45,7 +48,7 @@ android {
          }
      }
- 
+
 -    externalNativeBuild {
 +    if (!prebuiltNative) externalNativeBuild {
          cmake {
              path = file("src/main/cpp/CMakeLists.txt")
          }
-@@ -91,7 +93,7 @@ android {
- 
+@@ -91,7 +94,7 @@ android {
+
      buildFeatures {
          compose = true
 -        prefab = true
 +        prefab = !prebuiltNative
      }
  }
- 
+
+diff --git a/app/src/androidTest/java/io/github/jqssun/airplay/AuroraRegressionInstrumentation.java b/app/src/androidTest/java/io/github/jqssun/airplay/AuroraRegressionInstrumentation.java
+new file mode 100644
+index 0000000..9b8f4e7
+--- /dev/null
++++ b/app/src/androidTest/java/io/github/jqssun/airplay/AuroraRegressionInstrumentation.java
+@@ -0,0 +1,93 @@
++package io.github.jqssun.airplay;
++
++import android.app.Activity;
++import android.app.Instrumentation;
++import android.content.Context;
++import android.content.Intent;
++import android.net.Uri;
++import android.os.Bundle;
++import io.github.jqssun.airplay.service.AirPlayService;
++import java.io.PrintWriter;
++import java.io.StringWriter;
++
++/** Synthetic session tests. Does not pretend to validate an Apple sender or video decoding. */
++public final class AuroraRegressionInstrumentation extends Instrumentation {
++    private int checks;
++    private final StringBuilder report = new StringBuilder();
++    @Override public void onCreate(Bundle args) { super.onCreate(args); start(); }
++    @Override public void onStart() {
++        Bundle result = new Bundle(); int code = Activity.RESULT_OK;
++        try { testProjectionLifecycle(); }
++        catch (Throwable error) {
++            code = Activity.RESULT_CANCELED;
++            StringWriter trace = new StringWriter(); error.printStackTrace(new PrintWriter(trace));
++            report.append("FAIL ").append(trace);
++        }
++        result.putString("stream", "\n" + report + "Checks: " + checks + "\n");
++        finish(code, result);
++    }
++    private void testProjectionLifecycle() throws Exception {
++        Context ctx = getTargetContext();
++        Uri control = Uri.parse("content://dev.aurora.airplay.control");
++        Bundle original = ctx.getContentResolver().call(control, "status", null, null);
++        if (original.getBoolean("casting")) {
++            report.append("SKIP: an actual sender is active\n"); return;
++        }
++        Bundle restore = new Bundle(); restore.putBoolean("enabled", original.getBoolean("enabled"));
++        Activity initial = null, projected = null;
++        ActivityMonitor monitor = null;
++        try {
++            Bundle enabled = new Bundle(); enabled.putBoolean("enabled", true);
++            ctx.getContentResolver().call(control, "configure", null, enabled);
++            initial = startActivitySync(new Intent(ctx, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
++            for (int i = 0; i < 100 && (service() == null || service().getServerState().getValue() != AirPlayService.ServerState.RUNNING); i++) Thread.sleep(100);
++            require(service() != null && service().getServerState().getValue() == AirPlayService.ServerState.RUNNING, "Receiver is running");
++            Activity advanced = initial; runOnMainSync(advanced::finish); initial = null;
++            waitForIdleSync(); Thread.sleep(400);
++            monitor = addMonitor(MainActivity.class.getName(), null, false);
++            runOnMainSync(() -> service().onConnectionInit());
++            require(monitor.waitForActivityWithTimeout(1200) == null, "A TCP probe never opens playback UI");
++            runOnMainSync(() -> service().onVideoSize(1920, 1080, 1920, 1080));
++            projected = monitor.waitForActivityWithTimeout(6000);
++            require(projected != null, "Real-session callback opens projection UI");
++            require(projected.getIntent().getComponent().getClassName().endsWith(".PlaybackActivity"), "Projection uses the private playback entry");
++            Activity playback = projected;
++            runOnMainSync(() -> service().onConnectionDestroy());
++            for (int i = 0; i < 60 && !playback.isFinishing() && !playback.isDestroyed(); i++) Thread.sleep(100);
++            require(playback.isFinishing() || playback.isDestroyed(), "Disconnect dismisses projection without showing settings");
++            require(service() != null && service().getServerState().getValue() == AirPlayService.ServerState.RUNNING, "Receiver stays ready after projection ends");
++            initial = startActivitySync(new Intent(ctx, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
++            waitForIdleSync();
++            Bundle off = new Bundle(); off.putBoolean("enabled", false);
++            ctx.getContentResolver().call(control, "configure", null, off);
++            for (int i = 0; i < 60 && service().getServerState().getValue() != AirPlayService.ServerState.STOPPED; i++) Thread.sleep(100);
++            require(service().getServerState().getValue() == AirPlayService.ServerState.STOPPED, "Master off releases a receiver still bound to an Activity");
++            ctx.stopService(new Intent(ctx, AirPlayService.class));
++            Thread.sleep(600);
++            runOnMainSync(() -> new BootReceiver().onReceive(ctx, new Intent(Intent.ACTION_BOOT_COMPLETED)));
++            Thread.sleep(600);
++            require(!ctx.getContentResolver().call(control, "status", null, null).getBoolean("enabled"), "Boot respects the persisted off state");
++            require(service() == null || service().getServerState().getValue() == AirPlayService.ServerState.STOPPED, "Boot does not restart a disabled receiver");
++            ctx.startForegroundService(new Intent(ctx, AirPlayService.class).setAction(AirPlayService.ACTION_START_SERVER));
++            Thread.sleep(6500);
++            require(service() != null && service().getServerState().getValue() == AirPlayService.ServerState.STOPPED,
++                    "Rejected foreground start meets its deadline while bound");
++            runOnMainSync(() -> service().startServer(original.getString("name", "Aurora TV")));
++            for (int i = 0; i < 60 && service().getServerState().getValue() != AirPlayService.ServerState.RUNNING; i++) Thread.sleep(100);
++            require(ctx.getContentResolver().call(control, "status", null, null).getBoolean("enabled")
++                    && service().getServerState().getValue() == AirPlayService.ServerState.RUNNING, "Explicit advanced Start can re-enable the receiver");
++        } finally {
++            if (monitor != null) removeMonitor(monitor);
++            Activity a = initial, b = projected;
++            runOnMainSync(() -> { if (a != null) a.finish(); if (b != null) b.finish(); });
++            ctx.getContentResolver().call(control, "configure", null, restore);
++            if (restore.getBoolean("enabled")) ctx.startForegroundService(new Intent(ctx, AirPlayService.class).setAction(AirPlayService.ACTION_START_SERVER));
++            else ctx.stopService(new Intent(ctx, AirPlayService.class));
++        }
++    }
++    private AirPlayService service() { return AirPlayService.Companion.getInstance(); }
++    private void require(boolean value, String message) {
++        if (!value) throw new AssertionError(message);
++        checks++; report.append("PASS ").append(message).append('\n');
++    }
++}
 diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
-index f42c86f..30287df 100644
+index f42c86f..ac26468 100644
 --- a/app/src/main/AndroidManifest.xml
 +++ b/app/src/main/AndroidManifest.xml
 @@ -1,6 +1,10 @@
  <?xml version="1.0" encoding="utf-8"?>
  <manifest xmlns:android="http://schemas.android.com/apk/res/android">
- 
+
 +    <!-- Aurora launcher and receiver must be signed with the same key. -->
 +    <permission android:name="dev.aurora.tv.permission.CONTROL_AIRPLAY"
 +        android:protectionLevel="signature" />
@@ -63,7 +164,18 @@ index f42c86f..30287df 100644
      <uses-permission android:name="android.permission.INTERNET" />
      <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
      <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-@@ -48,7 +52,9 @@
+@@ -45,10 +49,20 @@
+             </intent-filter>
+         </activity>
+
++        <!-- Only our own service may open the screenless projection entry. -->
++        <activity-alias android:name=".PlaybackActivity" android:targetActivity=".MainActivity" android:exported="false" />
++
++        <provider android:name=".AirPlayControlProvider"
++            android:authorities="dev.aurora.airplay.control"
++            android:permission="dev.aurora.tv.permission.CONTROL_AIRPLAY"
++            android:exported="true" />
++
          <service
              android:name=".service.AirPlayService"
              android:foregroundServiceType="connectedDevice|mediaPlayback"
@@ -71,57 +183,346 @@ index f42c86f..30287df 100644
 +            android:stopWithTask="false"
 +            android:permission="dev.aurora.tv.permission.CONTROL_AIRPLAY"
 +            android:exported="true" />
- 
+
          <receiver
              android:name=".BootReceiver"
-diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index 9a17a5d..c73f293 100644
---- a/app/src/main/res/values/strings.xml
-+++ b/app/src/main/res/values/strings.xml
-@@ -1,6 +1,6 @@
- <?xml version="1.0" encoding="utf-8"?>
- <resources>
--    <string name="app_name">AirPlay Server</string>
-+    <string name="app_name">Aurora AirPlay</string>
- 
-     <!-- Notification -->
-     <string name="notification_channel">AirPlay Service</string>
+@@ -56,6 +70,7 @@
+             android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.BOOT_COMPLETED" />
++                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+             </intent-filter>
+         </receiver>
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/AirPlayControlProvider.kt b/app/src/main/kotlin/io/github/jqssun/airplay/AirPlayControlProvider.kt
+new file mode 100644
+index 0000000..c7d131a
+--- /dev/null
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/AirPlayControlProvider.kt
+@@ -0,0 +1,58 @@
++package io.github.jqssun.airplay
++
++import android.content.ContentProvider
++import android.content.ContentValues
++import android.database.Cursor
++import android.net.Uri
++import android.os.Bundle
++import android.provider.Settings
++import io.github.jqssun.airplay.service.AirPlayService
++
++/** Launcher control surface; guarded by a signature permission in the manifest. */
++class AirPlayControlProvider : ContentProvider() {
++    override fun onCreate() = true
++    override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
++        require(method == "status" || method == "configure") { "Unknown AirPlay operation" }
++        val ctx = requireNotNull(context)
++        // ContentProvider.call does not infer URI read/write permission checks.
++        ctx.enforceCallingOrSelfPermission("dev.aurora.tv.permission.CONTROL_AIRPLAY", "AirPlay control requires the paired launcher")
++        val prefs = ctx.getSharedPreferences(Prefs.NAME, 0)
++        if (method == "configure") {
++            val edit = prefs.edit()
++            if (extras?.containsKey("enabled") == true) {
++                val enabled = extras.getBoolean("enabled")
++                edit.putBoolean(Prefs.RECEIVER_ENABLED, enabled)
++                    .putBoolean(Prefs.AUTO_START, enabled).putBoolean(Prefs.BOOT_AUTO_START, enabled)
++                if (enabled) edit.putBoolean(Prefs.RUN_IN_BACKGROUND, true)
++                    .putBoolean(Prefs.LAUNCH_ON_CONNECT, true).putBoolean(Prefs.AUTO_FULLSCREEN, true)
++            }
++            if (extras?.containsKey("name") == true) {
++                val name = extras.getString("name", "").trim()
++                require(name.isNotEmpty() && name.length <= 40 && name.none { it.isISOControl() }) { "Invalid receiver name" }
++                edit.putString(Prefs.SERVER_NAME, name)
++            }
++            if (extras?.containsKey("require_pin") == true) edit.putBoolean(Prefs.REQUIRE_PIN, extras.getBoolean("require_pin"))
++            check(edit.commit()) { "Cannot save AirPlay settings" }
++            if (extras?.containsKey("enabled") == true && !extras.getBoolean("enabled")) {
++                android.os.Handler(android.os.Looper.getMainLooper()).post {
++                    AirPlayService.instance?.applyDisabledState()
++                }
++            }
++        }
++        return Bundle().apply {
++            putInt("protocol", 1)
++            putBoolean("enabled", prefs.getBoolean(Prefs.RECEIVER_ENABLED, Prefs.DEF_RECEIVER_ENABLED))
++            putString("name", prefs.getString(Prefs.SERVER_NAME, Prefs.DEF_SERVER_NAME))
++            putBoolean("require_pin", prefs.getBoolean(Prefs.REQUIRE_PIN, Prefs.DEF_REQUIRE_PIN))
++            putBoolean("overlay", Settings.canDrawOverlays(ctx))
++            val service = AirPlayService.instance
++            putString("state", service?.serverState?.value?.name ?: "STOPPED")
++            putBoolean("casting", service?.let { it.mirroringActive.value || it.videoPlaybackActive.value || (it.audioOnly.value && it.connectionCount.value > 0) } ?: false)
++        }
++    }
++    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
++    override fun getType(uri: Uri): String? = null
++    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
++    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 0
++    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
++}
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/BootReceiver.kt b/app/src/main/kotlin/io/github/jqssun/airplay/BootReceiver.kt
+index d84479e..ce1e781 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/BootReceiver.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/BootReceiver.kt
+@@ -9,13 +9,19 @@ import io.github.jqssun.airplay.service.AirPlayService
+ class BootReceiver : BroadcastReceiver() {
+     override fun onReceive(context: Context, intent: Intent) {
+         if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+-            intent.action != "android.intent.action.QUICKBOOT_POWERON") return
++            intent.action != "android.intent.action.QUICKBOOT_POWERON" &&
++            intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+
+         val prefs = context.getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE)
+-        if (!prefs.getBoolean(Prefs.BOOT_AUTO_START, Prefs.DEF_BOOT_AUTO_START)) return
++        if (!prefs.getBoolean(Prefs.RECEIVER_ENABLED, Prefs.DEF_RECEIVER_ENABLED)) return
+
+         val serviceIntent = Intent(context, AirPlayService::class.java)
+             .setAction(AirPlayService.ACTION_START_SERVER)
+-        ContextCompat.startForegroundService(context, serviceIntent)
++        try {
++            ContextCompat.startForegroundService(context, serviceIntent)
++        } catch (error: RuntimeException) {
++            // Launcher retries from its visible Activity if the OS blocks this boot start.
++            android.util.Log.w("AuroraAirPlay", "Boot start deferred to launcher", error)
++        }
+     }
+ }
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/MainActivity.kt b/app/src/main/kotlin/io/github/jqssun/airplay/MainActivity.kt
+index d72b937..873ec81 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/MainActivity.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/MainActivity.kt
+@@ -29,6 +29,7 @@ import io.github.jqssun.airplay.viewmodel.MainViewModel
+ import dagger.hilt.android.AndroidEntryPoint
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.combine
++import kotlinx.coroutines.flow.collectLatest
+ import kotlinx.coroutines.launch
+
+ @AndroidEntryPoint
+@@ -36,6 +37,7 @@ class MainActivity : ComponentActivity() {
+
+     private val viewModel: MainViewModel by viewModels()
+     private var service: AirPlayService? = null
++    private val automaticPlayback = mutableStateOf(false)
+     val isInPip = mutableStateOf(false)
+     private val logCallback: (String) -> Unit = { viewModel.addLog(it) }
+     private val pinCallback: (String?) -> Unit = { viewModel.showPin(it) }
+@@ -44,11 +46,14 @@ class MainActivity : ComponentActivity() {
+         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+             val svc = (binder as? AirPlayService.LocalBinder)?.service ?: return
+             service = svc
+-            svc.logCallback = logCallback
++            svc.logCallback = if (automaticPlayback.value) null else logCallback
+             svc.pinCallback = pinCallback
+             viewModel.bindService(svc)
+-            if (viewModel.autoStart.value && svc.serverState.value == AirPlayService.ServerState.STOPPED) {
+-                viewModel.startServer()
++            viewModel.showPin(svc.currentPin)
++            if (getSharedPreferences(Prefs.NAME, 0).getBoolean(Prefs.RECEIVER_ENABLED, Prefs.DEF_RECEIVER_ENABLED) &&
++                svc.serverState.value == AirPlayService.ServerState.STOPPED) {
++                ContextCompat.startForegroundService(this@MainActivity,
++                    Intent(this@MainActivity, AirPlayService::class.java).setAction(AirPlayService.ACTION_START_SERVER))
+             }
+         }
+         override fun onServiceDisconnected(name: ComponentName?) {
+@@ -63,7 +68,24 @@ class MainActivity : ComponentActivity() {
+
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        updateLaunchMode(intent)
+         enableEdgeToEdge()
++        lifecycleScope.launch {
++            repeatOnLifecycle(Lifecycle.State.STARTED) {
++                var sessionSeen = false
++                combine(viewModel.mirroringActive, viewModel.videoPlaybackActive,
++                    viewModel.videoSessionPending, viewModel.pinCode) { mirror, video, pending, pin ->
++                    mirror || video || pending || pin != null
++                }.collectLatest { active ->
++                    if (active) sessionSeen = true
++                    if (automaticPlayback.value && !active) {
++                        // Debounce teardown/setup races; a real next session cancels this exit.
++                        delay(if (sessionSeen) 1500 else 8000)
++                        if (automaticPlayback.value) finish()
++                    }
++                }
++            }
++        }
+
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+@@ -110,6 +132,8 @@ class MainActivity : ComponentActivity() {
+                 MainScreen(
+                     viewModel = viewModel,
+                     isInPip = isInPip.value,
++                    playbackOnly = automaticPlayback.value,
++                    onExitProjection = { service?.endProjection(); finish() },
+                     onSurfaceAvailable = { viewModel.onSurfaceAvailable(it) },
+                     onSurfaceDestroyed = { viewModel.onSurfaceDestroyed(it) },
+                     onPip = { enterPip() }
+@@ -118,6 +142,25 @@ class MainActivity : ComponentActivity() {
+         }
+     }
+
++    private fun updateLaunchMode(intent: Intent) {
++        automaticPlayback.value = intent.component?.className == "io.github.jqssun.airplay.PlaybackActivity"
++        service?.logCallback = if (automaticPlayback.value) null else logCallback
++        if (Build.VERSION.SDK_INT >= 27) {
++            setTurnScreenOn(automaticPlayback.value)
++            setShowWhenLocked(automaticPlayback.value)
++        } else if (automaticPlayback.value) {
++            window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
++        } else {
++            window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
++        }
++    }
++
++    override fun onNewIntent(intent: Intent) {
++        super.onNewIntent(intent)
++        setIntent(intent)
++        updateLaunchMode(intent)
++    }
++
+     fun enterPip() {
+         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+         enterPictureInPictureMode(_pipParams())
+@@ -135,7 +178,7 @@ class MainActivity : ComponentActivity() {
+     }
+
+     private fun _shouldAutoPip(): Boolean =
+-        viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
++        !automaticPlayback.value && viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
+             viewModel.connectionCount.value > 0
+
+     override fun onUserLeaveHint() {
+@@ -148,16 +191,6 @@ class MainActivity : ComponentActivity() {
+         isInPip.value = inPip
+     }
+
+-    override fun onStop() {
+-        super.onStop()
+-        // never stop mid-session
+-        if (!viewModel.runInBackground.value && !isChangingConfigurations &&
+-            viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
+-            viewModel.connectionCount.value == 0) {
+-            viewModel.stopServer()
+-        }
+-    }
+-
+     override fun onDestroy() {
+         service?.let {
+             if (it.logCallback === logCallback) it.logCallback = null
 diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt b/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt
-index f4a643e..d17de2e 100644
+index f4a643e..c90daf8 100644
 --- a/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt
 +++ b/app/src/main/kotlin/io/github/jqssun/airplay/Prefs.kt
-@@ -7,7 +7,7 @@ object Prefs {
+@@ -7,7 +7,9 @@ object Prefs {
      const val NAME = "settings"
      const val AUTO = "auto"; const val ON = "on"; const val OFF = "off"
- 
+
 -    const val SERVER_NAME = "server_name"; const val DEF_SERVER_NAME = "Android AirPlay"
++    const val RECEIVER_ENABLED = "aurora_receiver_enabled"; const val DEF_RECEIVER_ENABLED = true
++
 +    const val SERVER_NAME = "server_name"; const val DEF_SERVER_NAME = "Aurora TV"
      const val FALLBACK_MAC_ADDRESS = "fallback_mac_address"
      const val SERVER_PORT = "server_port"; const val DEF_SERVER_PORT = 7000
      const val AUTO_START = "auto_start"; const val DEF_AUTO_START = true
 diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt b/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt
-index 9390300..6fb91d0 100644
+index 9390300..08b7a4a 100644
 --- a/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt
 +++ b/app/src/main/kotlin/io/github/jqssun/airplay/service/AirPlayService.kt
-@@ -72,7 +72,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -72,7 +72,59 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
      private var nativeHandle = 0L
      private var nsdManager: NsdServiceManager? = null
      private var wakeLock: PowerManager.WakeLock? = null
 -    private var foregroundStarted = false
 +    private val retryStart = Runnable { startResidentServer() }
++    private val networkRestart = Runnable {
++        if (receiverEnabled()) {
++            releaseServer()
++            startResidentServer()
++        }
++    }
++    private val connectivity by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager }
++    private var lastNetwork: android.net.Network? = null
++    private var watchingNetwork = false
++    private val networkCallback = object : android.net.ConnectivityManager.NetworkCallback() {
++        override fun onAvailable(network: android.net.Network) {
++            _mainHandler.post {
++                if (network != lastNetwork) {
++                    lastNetwork = network
++                    scheduleNetworkRestart()
++                }
++            }
++        }
++        override fun onLost(network: android.net.Network) {
++            _mainHandler.post {
++                if (network == lastNetwork) {
++                    lastNetwork = null
++                    scheduleNetworkRestart()
++                }
++            }
++        }
++    }
++
++    private fun receiverEnabled() = prefs.getBoolean(Prefs.RECEIVER_ENABLED, Prefs.DEF_RECEIVER_ENABLED)
++    private fun scheduleNetworkRestart() {
++        _mainHandler.removeCallbacks(networkRestart)
++        if (receiverEnabled()) _mainHandler.postDelayed(networkRestart, 1500L)
++    }
++    val currentPin: String? get() = _lastPin
++
++    /** End this session while keeping the receiver available for the next sender. */
++    fun endProjection() = restartServer()
++
++    fun restartServer() {
++        if (receiverEnabled()) {
++            releaseServer()
++            startResidentServer()
++        }
++    }
++
++    /** stopService alone cannot release a service still bound to a playback Activity. */
++    fun applyDisabledState() {
++        if (!receiverEnabled()) {
++            releaseServer()
++            stopSelf()
++        }
++    }
      private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
- 
+
      val videoRenderer = VideoRenderer(this)
-@@ -329,14 +329,30 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -207,7 +259,15 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+
+     override fun onCreate() {
+         super.onCreate()
++        instance = this
+         createNotificationChannel()
++        try {
++            lastNetwork = connectivity.activeNetwork
++            connectivity.registerDefaultNetworkCallback(networkCallback)
++            watchingNetwork = true
++        } catch (error: RuntimeException) {
++            Log.w(TAG, "Network recovery callback unavailable", error)
++        }
+         dacpController = DacpController(this)
+         dacpPlayer = DacpPlayer(
+             mainLooper,
+@@ -329,21 +389,51 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
          }
      }
- 
+
 +    // Aurora: a launcher start and a system sticky restart take the same path.
      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 -        if (intent?.action == ACTION_START_SERVER) {
 -            promoteToForeground()
 +        super.onStartCommand(intent, flags, startId)
-+        if (intent?.action != null && intent.action != ACTION_START_SERVER) {
++        // Even a rejected start must meet the FGS deadline while an Activity remains bound.
++        promoteToForeground()
++        if (!receiverEnabled()) {
++            releaseServer()
++            stopSelf()
++            return START_NOT_STICKY
++        }
++        if (intent?.action == ACTION_RESTART_SERVER) releaseServer()
++        if (intent?.action != null && intent.action != ACTION_START_SERVER && intent.action != ACTION_RESTART_SERVER) {
 +            return if (_serverState.value == ServerState.RUNNING) START_STICKY else START_NOT_STICKY
 +        }
 +        startResidentServer()
@@ -129,6 +530,7 @@ index 9390300..6fb91d0 100644
 +    }
 +
 +    private fun startResidentServer() {
++        if (!receiverEnabled()) { stopSelf(); return }
 +        _mainHandler.removeCallbacks(retryStart)
 +        // Promote even before native initialization; failures must not violate the FGS deadline.
 +        promoteToForeground()
@@ -145,9 +547,21 @@ index 9390300..6fb91d0 100644
          }
 -        return START_NOT_STICKY
      }
- 
+
      fun startServer(name: String) {
-@@ -482,13 +498,16 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
++        // This public entry is the explicit Start action in advanced settings.
++        prefs.edit().putBoolean(Prefs.RECEIVER_ENABLED, true)
++            .putBoolean(Prefs.AUTO_START, true).putBoolean(Prefs.BOOT_AUTO_START, true)
++            .putBoolean(Prefs.RUN_IN_BACKGROUND, true).apply()
+         startServer(name, ensureServiceStarted = true)
+     }
+
+     private fun startServer(name: String, ensureServiceStarted: Boolean) {
++        if (!receiverEnabled()) return
+         if (_serverState.value == ServerState.RUNNING) return
+         val effectiveName = name.ifBlank { Prefs.DEF_SERVER_NAME }
+
+@@ -482,13 +572,20 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
          wakeLock?.release()
          wakeLock = null
          _serverState.value = ServerState.ERROR
@@ -157,18 +571,30 @@ index 9390300..6fb91d0 100644
 -        }
 +        // Keep the foreground notification while a resident start is retried.
      }
- 
+
      fun stopServer() {
++        // Explicit Stop has the same persistent meaning as the Launcher master switch.
++        prefs.edit().putBoolean(Prefs.RECEIVER_ENABLED, false)
++            .putBoolean(Prefs.AUTO_START, false).putBoolean(Prefs.BOOT_AUTO_START, false).commit()
 +        releaseServer()
 +        stopSelf() // An explicit user stop must not trigger a sticky restart.
 +    }
 +
 +    private fun releaseServer() {
++        _mainHandler.removeCallbacks(networkRestart)
 +        _mainHandler.removeCallbacks(retryStart)
          audioRenderer.detachEngine()
          if (nativeHandle != 0L) {
              NativeBridge.nativeStop(nativeHandle)
-@@ -517,8 +536,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -506,6 +603,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+         _audioOnly.value = false
+         _videoPlaybackActive.value = false
+         _mirroringActive.value = false
++        clearPin()
+         _videoPlaybackInfo.value = VideoPlaybackInfo()
+         _lastVideoPollAt = 0
+         _videoPollSuppressed = false
+@@ -517,8 +615,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
          _connectionCount.value = 0
          _refreshDacpPlayer()
          stopForeground(STOP_FOREGROUND_REMOVE)
@@ -176,26 +602,31 @@ index 9390300..6fb91d0 100644
 -        stopSelf()
          log("Server stopped")
      }
- 
-@@ -579,7 +596,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+
+@@ -579,7 +675,13 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
      }
- 
+
      override fun onDestroy() {
 -        stopServer()
++        if (instance === this) instance = null
++        if (watchingNetwork) {
++            try { connectivity.unregisterNetworkCallback(networkCallback) } catch (_: RuntimeException) { }
++            watchingNetwork = false
++        }
 +        releaseServer()
 +        _mainHandler.removeCallbacksAndMessages(null)
          dacpPlayer.release()
          mediaReceiver?.let {
              try { unregisterReceiver(it) } catch (_: Exception) {}
-@@ -607,6 +625,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -607,6 +709,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
      }
- 
+
      override fun onVideoPlay(location: String, startPositionSeconds: Float) {
 +        if (shouldLaunchOnConnect()) launchMainActivity()
          _videoLocation.value = location
          _videoPlaySeq.value++
          _videoPollSuppressed = false
-@@ -646,6 +665,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -646,6 +749,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
      override fun onVideoSize(srcW: Float, srcH: Float, w: Float, h: Float) {
          clearPin()
          if (w > 0 && h > 0) {
@@ -203,9 +634,9 @@ index 9390300..6fb91d0 100644
              _videoAspect.value = w / h
              _videoResolution.value = "${w.toInt()}x${h.toInt()}"
              videoRenderer.setResolution(w.toInt(), h.toInt())
-@@ -711,15 +731,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -711,20 +815,16 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
      }
- 
+
      override fun onConnectionInit() {
 -        val firstConnection = _connectionCount.value == 0
          _connectionCount.value++
@@ -218,9 +649,16 @@ index 9390300..6fb91d0 100644
 -        if (!shouldLaunchOnConnect()) return
 -        launchMainActivity()
      }
- 
+
      override fun onConnectionDestroy() {
-@@ -760,6 +774,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+         _connectionCount.value = (_connectionCount.value - 1).coerceAtLeast(0)
+         if (_connectionCount.value == 0) {
++            _mirroringActive.value = false
++            clearPin()
+             // clients may drop without POST /stop; must run before the poll-state reset
+             _endVideoPlayback("AirPlay Video stopped (disconnect)")
+             // last client gone: release audio output devices to save power
+@@ -760,6 +860,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
          // a new pin is the sync point with the client prompt: show every new value immediately
          if (_lastPin == pin) return
          _lastPin = pin
@@ -228,7 +666,7 @@ index 9390300..6fb91d0 100644
          pinCallback?.invoke(pin)
          _updateMediaNotification()
      }
-@@ -1020,11 +1035,6 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+@@ -1020,15 +1121,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
              buildNotification(),
              ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
          )
@@ -238,10 +676,252 @@ index 9390300..6fb91d0 100644
 -    private fun requiresPin(): Boolean {
 -        return prefs.getBoolean(Prefs.REQUIRE_PIN, Prefs.DEF_REQUIRE_PIN)
      }
- 
+
      private fun shouldLaunchOnConnect(): Boolean {
+-        return prefs.getBoolean(Prefs.LAUNCH_ON_CONNECT, Prefs.DEF_LAUNCH_ON_CONNECT)
++        return receiverEnabled()
+     }
+
+     private fun _buildMediaNotification(): Notification {
+@@ -1071,7 +1167,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+
+     private fun launchMainActivity() {
+         Handler(Looper.getMainLooper()).post {
+-            val launchIntent = Intent(this, MainActivity::class.java)
++            if (!receiverEnabled()) return@post
++            val launchIntent = Intent().setClassName(this, "io.github.jqssun.airplay.PlaybackActivity")
+                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+             try {
+                 startActivity(launchIntent)
+@@ -1104,6 +1201,9 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
+     }
+
+     companion object {
++        @Volatile var instance: AirPlayService? = null
++            private set
++        const val ACTION_RESTART_SERVER = "dev.aurora.airplay.RESTART_SERVER"
+         private const val TAG = "AirPlayService"
+         private const val VOL_SYNC_EPS = 0.033f
+         private const val VOL_SYNC_MAX_STEPS = 32
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/ui/MainScreen.kt b/app/src/main/kotlin/io/github/jqssun/airplay/ui/MainScreen.kt
+index 81e662d..ade1321 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/ui/MainScreen.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/ui/MainScreen.kt
+@@ -86,6 +86,8 @@ private enum class Tab(val labelRes: Int, val icon: ImageVector) {
+ fun MainScreen(
+     viewModel: MainViewModel,
+     isInPip: Boolean = false,
++    playbackOnly: Boolean = false,
++    onExitProjection: () -> Unit = {},
+     onSurfaceAvailable: (android.view.Surface) -> Unit,
+     onSurfaceDestroyed: (android.view.Surface) -> Unit,
+     onPip: () -> Unit = {}
+@@ -132,10 +134,10 @@ fun MainScreen(
+
+     val activity = LocalContext.current as? Activity
+     val videoScreen = videoPlaybackActive || videoSessionPending
+-    LaunchedEffect(fullscreen, videoScreen) {
++    LaunchedEffect(fullscreen, videoScreen, playbackOnly) {
+         val window = activity?.window ?: return@LaunchedEffect
+         val controller = WindowInsetsControllerCompat(window, window.decorView)
+-        if (fullscreen || videoScreen) {
++        if (fullscreen || videoScreen || playbackOnly) {
+             controller.hide(WindowInsetsCompat.Type.systemBars())
+             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+         } else {
+@@ -206,8 +208,10 @@ fun MainScreen(
+             onDispose { brightnessState?.clearOverride() }
+         }
+         // orientation follows the video aspect; manual rotate holds until the next video
+-        LaunchedEffect(videoPlaybackAspect) {
+-            activity?.requestedOrientation = if (videoPlaybackAspect < 1f) {
++        LaunchedEffect(videoPlaybackAspect, playbackOnly) {
++            activity?.requestedOrientation = if (playbackOnly) {
++                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
++            } else if (videoPlaybackAspect < 1f) {
+                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+             } else {
+                 ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+@@ -225,7 +229,7 @@ fun MainScreen(
+             context.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+         }
+         var showSpeedSelector by remember { mutableStateOf(false) }
+-        BackHandler { viewModel.stopVideoPlayback() }
++        BackHandler { if (playbackOnly) onExitProjection() else viewModel.stopVideoPlayback() }
+
+         val rootFocusRequester = remember { FocusRequester() }
+         val playPauseFocusRequester = remember { FocusRequester() }
+@@ -409,7 +413,7 @@ fun MainScreen(
+                         videoUrl = videoLocation,
+                         downloadProgress = downloadProgress,
+                         showDownload = durationMs > 0,
+-                        onBackClick = { viewModel.stopVideoPlayback() },
++                        onBackClick = { if (playbackOnly) onExitProjection() else viewModel.stopVideoPlayback() },
+                         onSpeedClick = {
+                             overlayVisible = false
+                             showSpeedSelector = true
+@@ -429,7 +433,7 @@ fun MainScreen(
+                         contentScale = zoomState.contentScale,
+                         isPipSupported = isPipSupported,
+                         onRotateClick = {
+-                            activity?.let {
++                            if (!playbackOnly) activity?.let {
+                                 it.requestedOrientation =
+                                     if (it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                                         ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+@@ -490,7 +494,7 @@ fun MainScreen(
+
+     // restore system bars when exiting pip back to non-fullscreen
+     LaunchedEffect(isInPip) {
+-        if (!isInPip && !fullscreen) {
++        if (!isInPip && !fullscreen && !playbackOnly) {
+             val window = activity?.window ?: return@LaunchedEffect
+             WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+         }
+@@ -501,12 +505,12 @@ fun MainScreen(
+         if (pin != null) fullscreen = false
+     }
+
+-    if (fullscreen) {
+-        BackHandler { fullscreen = false }
++    if (fullscreen || playbackOnly) {
++        BackHandler { if (playbackOnly) onExitProjection() else fullscreen = false }
+         FullscreenVideo(
+             viewModel = viewModel,
+             video = video,
+-            onExitFullscreen = { fullscreen = false },
++            onExitFullscreen = { if (playbackOnly) onExitProjection() else fullscreen = false },
+             onPip = onPip
+         )
+     } else {
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/ui/SettingsScreen.kt b/app/src/main/kotlin/io/github/jqssun/airplay/ui/SettingsScreen.kt
+index 554fe10..cb45ac6 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/ui/SettingsScreen.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/ui/SettingsScreen.kt
+@@ -17,15 +17,11 @@ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.focus.onFocusChanged
+ import androidx.compose.ui.graphics.RectangleShape
+-import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+ import androidx.compose.ui.semantics.Role
+ import androidx.compose.ui.text.input.ImeAction
+ import androidx.compose.ui.text.input.KeyboardType
+ import androidx.compose.ui.unit.dp
+-import androidx.lifecycle.Lifecycle
+-import androidx.lifecycle.LifecycleEventObserver
+-import androidx.lifecycle.compose.LocalLifecycleOwner
+ import io.github.jqssun.airplay.Prefs
+ import io.github.jqssun.airplay.R
+ import io.github.jqssun.airplay.viewmodel.MainViewModel
+@@ -46,14 +42,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
+     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
+     val advertiseVideo by viewModel.advertiseVideo.collectAsState()
+     val advertiseAudio by viewModel.advertiseAudio.collectAsState()
+-    val launchOnConnect by viewModel.launchOnConnect.collectAsState()
+     val maxFps by viewModel.maxFps.collectAsState()
+     val overscanned by viewModel.overscanned.collectAsState()
+     val requirePin by viewModel.requirePin.collectAsState()
+     val allowNewConn by viewModel.allowNewConn.collectAsState()
+-    val autoStart by viewModel.autoStart.collectAsState()
+-    val bootAutoStart by viewModel.bootAutoStart.collectAsState()
+-    val runInBackground by viewModel.runInBackground.collectAsState()
+     val serverPort by viewModel.serverPort.collectAsState()
+     val audioLatencyMs by viewModel.audioLatencyMs.collectAsState()
+     val forceSwAlac by viewModel.forceSwAlac.collectAsState()
+@@ -91,20 +83,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
+             range = 1..65535
+         )
+
+-        SettingSwitch(
+-            title = stringResource(R.string.setting_boot_auto_start),
+-            description = stringResource(R.string.setting_boot_auto_start_desc),
+-            checked = bootAutoStart,
+-            onCheckedChange = { viewModel.setBootAutoStart(it) }
+-        )
+-
+-        SettingSwitch(
+-            title = stringResource(R.string.setting_run_in_background),
+-            description = stringResource(R.string.setting_run_in_background_desc),
+-            checked = runInBackground,
+-            onCheckedChange = { viewModel.setRunInBackground(it) }
+-        )
+-
+         SectionHeader(stringResource(R.string.section_connection))
+
+         SettingSwitch(
+@@ -121,40 +99,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
+             onCheckedChange = { viewModel.setAllowNewConn(it) }
+         )
+
+-        val ctx = LocalContext.current
+-        val lifecycleOwner = LocalLifecycleOwner.current
+-        var hasOverlayPermission by remember { mutableStateOf(canAutoLaunch(ctx)) }
+-        DisposableEffect(lifecycleOwner) {
+-            val observer = LifecycleEventObserver { _, event ->
+-                if (event == Lifecycle.Event.ON_RESUME) hasOverlayPermission = canAutoLaunch(ctx)
+-            }
+-            lifecycleOwner.lifecycle.addObserver(observer)
+-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+-        }
+-        val needsOverlayPermission = launchOnConnect && !hasOverlayPermission
+-        ListItem(
+-            modifier = Modifier
+-                .dpadFocus(RectangleShape)
+-                .toggleable(
+-                    value = launchOnConnect,
+-                    role = Role.Switch,
+-                    onValueChange = {
+-                        viewModel.setLaunchOnConnect(it)
+-                        if (it && !canAutoLaunch(ctx)) ctx.startActivity(_overlayIntent(ctx))
+-                    }
+-                ),
+-            headlineContent = { Text(stringResource(R.string.setting_launch_on_connect)) },
+-            supportingContent = {
+-                Text(stringResource(
+-                    if (needsOverlayPermission) R.string.setting_launch_on_connect_no_permission
+-                    else R.string.setting_launch_on_connect_desc
+-                ))
+-            },
+-            trailingContent = {
+-                Switch(checked = launchOnConnect, onCheckedChange = null)
+-            }
+-        )
+-
+         SectionHeader(stringResource(R.string.section_display))
+
+         SettingSwitch(
+@@ -212,13 +156,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
+         )
+
+         if (developerOptions) {
+-            SettingSwitch(
+-                title = stringResource(R.string.setting_auto_start),
+-                description = stringResource(R.string.setting_auto_start_desc),
+-                checked = autoStart,
+-                onCheckedChange = { viewModel.setAutoStart(it) }
+-            )
+-
+             SettingSwitch(
+                 title = stringResource(R.string.setting_keep_screen_on),
+                 description = stringResource(R.string.setting_keep_screen_on_desc),
+diff --git a/app/src/main/kotlin/io/github/jqssun/airplay/viewmodel/MainViewModel.kt b/app/src/main/kotlin/io/github/jqssun/airplay/viewmodel/MainViewModel.kt
+index 197800c..feca2df 100644
+--- a/app/src/main/kotlin/io/github/jqssun/airplay/viewmodel/MainViewModel.kt
++++ b/app/src/main/kotlin/io/github/jqssun/airplay/viewmodel/MainViewModel.kt
+@@ -353,8 +353,7 @@ class MainViewModel @Inject constructor(app: Application) : AndroidViewModel(app
+             delay(SERVER_RESTART_DEBOUNCE_MS)
+             val svc = service ?: return@launch
+             if (svc.serverState.value == ServerState.RUNNING) {
+-                svc.stopServer()
+-                svc.startServer(_serverName.value)
++                svc.restartServer()
+             }
+         }
+     }
 diff --git a/app/src/main/res/values-zh/strings.xml b/app/src/main/res/values-zh/strings.xml
 new file mode 100644
+index 0000000..bab3b81
 --- /dev/null
 +++ b/app/src/main/res/values-zh/strings.xml
 @@ -0,0 +1,157 @@
@@ -402,3 +1082,15 @@ new file mode 100644
 +        <item>最高稳定性</item>
 +    </string-array>
 +</resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 9a17a5d..c73f293 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">AirPlay Server</string>
++    <string name="app_name">Aurora AirPlay</string>
+
+     <!-- Notification -->
+     <string name="notification_channel">AirPlay Service</string>

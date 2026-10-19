@@ -13,9 +13,20 @@ if [[ ! -f "$source_dir/app/build.gradle.kts" ]]; then
 fi
 [[ $(git -C "$source_dir" rev-parse HEAD) == "$expected_source" ]] || { echo 'Unexpected upstream revision' >&2; exit 1; }
 mkdir -p "$work"
-# The upstream archive cannot overwrite this file added by our patch on a prior build.
-rm -f "$work/app/src/main/res/values-zh/strings.xml" \
-    "$work/app/src/main/res/values-zh/strings.xml.rej"
+# Remove files added by the patch: an upstream archive cannot overwrite them.
+python3 - "$work" patches/airplay-resident.patch <<'CLEAN'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1]).resolve()
+lines = Path(sys.argv[2]).read_text().splitlines()
+for i, line in enumerate(lines[:-1]):
+    if line == '--- /dev/null' and lines[i + 1].startswith('+++ b/'):
+        path = root / lines[i + 1][6:]
+        if root not in path.resolve().parents:
+            raise SystemExit('Invalid added-file path')
+        for candidate in (path, Path(str(path) + '.rej'), Path(str(path) + '.orig')):
+            candidate.unlink(missing_ok=True)
+CLEAN
 # Export only tracked upstream files, then apply our reviewable source patch.
 git -C "$source_dir" archive "$expected_source" | tar -x -C "$work"
 patch --batch --forward -p1 -d "$work" < patches/airplay-resident.patch
@@ -36,4 +47,4 @@ with ZipFile(sys.argv[1]) as archive:
         (out / name).write_bytes(archive.read('lib/armeabi-v7a/' + name))
 PY
 "$work/gradlew" -p "$work" assembleDebug -PprebuiltNative=true
-cp "$work/app/build/outputs/apk/debug/app-debug.apk" "$root/artifacts/Aurora-AirPlay-0.0.31-aurora.1-debug.apk"
+cp "$work/app/build/outputs/apk/debug/app-debug.apk" "$root/artifacts/Aurora-AirPlay-0.0.31-aurora.2-debug.apk"

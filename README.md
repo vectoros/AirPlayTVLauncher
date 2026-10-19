@@ -16,6 +16,7 @@
 - 默认根据公网 IP 自动定位天气，位置缓存约 30 分钟；可立即刷新或手动选择城市。IP 反映网络出口，代理或 VPN 可能使城市与电视实际位置不同，不申请 GPS 定位权限。
 - 三款原创渐变壁纸，以及本地相册多选照片轮播（最多 30 张）；淡入淡出、缓慢推拉、横向滑移三种效果，15 / 30 / 60 秒间隔，最高 25fps，离开桌面暂停。
 - Android 12 / API 31 及以上使用 RenderEffect 模糊壁纸形成玻璃效果；更低版本使用半透明面板降级。
+- AirPlay 开机自动接收，真实投屏自动全屏、断开返回；Launcher 设置内统一管理开关、名称和配对码，关闭后重启仍保持关闭。
 
 方向键移动焦点，首页按下键展开全部应用列表，返回键收起；确认键打开应用或输入源，菜单键打开设置。通过「壁纸与照片轮播」和「天气与定位」配置新功能，详见[照片与天气使用说明](docs/PHOTOS_AND_WEATHER.md)。
 
@@ -25,7 +26,7 @@
 
 <img src="docs/images/banner.svg" alt="Aurora TV 应用横幅" width="320" height="180">
 
-资源位置、可编辑 SVG 和维护说明见 [图标设计](docs/ICON.md)。新资源已通过 Debug 构建和 Android Lint；目标电视暂时网络不可达，尚未部署验证。
+资源位置、可编辑 SVG 和维护说明见 [图标设计](docs/ICON.md)。资源已通过 Debug 构建和 Android Lint，并随最新版本部署至目标电视。
 
 ## 中文 / English
 
@@ -46,7 +47,7 @@ The interface follows the system language and supports Simplified Chinese and En
 
 面向具备 Leanback / TV 服务的系统，不要求 GMS。HDMI 依赖厂商 TV Input；独立 AirPlay 当前产物仅支持 `armeabi-v7a`，不能直接用于纯 64 位电视。
 
-静态照片等待期间不重绘壁纸或采样玻璃，过渡、推拉与程序化背景最高 25fps；离开首页暂停动画。低配设备仍可能受到多卡片模糊、主线程应用扫描和 4K 绘制影响。关闭液态玻璃会恢复旧毛玻璃，**不等于关闭模糊**。本次性能优化尚未真机复测。
+静态照片等待期间不重绘壁纸或采样玻璃，过渡、推拉与程序化背景最高 25fps；离开首页暂停动画。低配设备仍可能受到多卡片模糊、主线程应用扫描和 4K 绘制影响。关闭液态玻璃会恢复旧毛玻璃，**不等于关闭模糊**。调度回归检查已在 Sony 通过；尚无更新后的完整性能基准。
 
 逐版本限制、性能排查和采样命令见 [兼容性与性能](docs/COMPATIBILITY_AND_PERFORMANCE.md)。
 
@@ -95,14 +96,15 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 
 ## 源码结构
 
-应用包含九个 Java 源文件，使用原生 Android UI、网络及绘图 API，无第三方运行时依赖：
+应用包含十个 Java 源文件，使用原生 Android UI、网络及绘图 API，无第三方运行时依赖：
 
 | 文件 | 职责 |
 | --- | --- |
 | `LiquidGlassFrame.java` | 可切换液态玻璃、壁纸折射、高光和焦点动画 |
 | `MainActivity.java` | 首页、遥控器焦点、玻璃面板、设置与生命周期 |
 | `AppsDrawer.java` | 下键展开的应用网格与HDMI快捷入口 |
-| `AirPlayCompanion.java` | 可见桌面启动独立常驻接收服务 |
+| `AirPlayCompanion.java` | 后台查询与配置同签名接收器，遵守持久化开关 |
+| `AirPlaySettings.java` | Launcher 内的 AirPlay 开关、名称、PIN 与接收状态 |
 | `LauncherRepository.java` | 应用发现、哔哩哔哩优先、HDMI 与系统入口 |
 | `WeatherService.java` | IP 定位、城市搜索、天气请求、本机缓存与错误处理 |
 | `WallpaperView.java` | 原创动态背景、照片轮播、过渡效果与动画调度 |
@@ -121,7 +123,7 @@ adb -s SERIAL shell cmd package resolve-activity --brief \
 
 照片访问仅在打开选图功能时请求相应权限。选中图片在后台缩小至最大 1920×1080 的私有副本，不上传、不修改原图；清空照片只删除副本。城市设置、天气缓存及壁纸选择存于本机。不包含广告、账户系统或分析 SDK。电视上已安装应用的名称和图标属于各自权利人，运行时从设备读取。
 
-Launcher 自有代码和原创程序化壁纸采用 [MIT License](LICENSE)。独立 AirPlay 接收端及其修改补丁不适用该 MIT 声明，遵循上游 GPL 许可；其他依赖保留各自许可，详见 [第三方来源](third_party/README.md) 和 [补丁说明](patches/README.md)。发布接收端二进制前需准备与该版本匹配的对应源码及许可材料。仓库尚未创建远端或发布版本，发布前事项见 [开源审查](docs/OPEN_SOURCE_REVIEW.md)。
+Launcher 自有代码和原创程序化壁纸采用 [MIT License](LICENSE)。独立 AirPlay 接收端及其修改补丁不适用该 MIT 声明，遵循上游 GPL 许可；其他依赖保留各自许可，详见 [第三方来源](third_party/README.md) 和 [补丁说明](patches/README.md)。发布接收端二进制前需准备与该版本匹配的对应源码及许可材料。GitHub 仓库已建立；正式二进制发布前事项见 [开源审查](docs/OPEN_SOURCE_REVIEW.md)。
 
 ### 液态玻璃（v0.3.0）
 
@@ -134,3 +136,7 @@ Launcher 自有代码和原创程序化壁纸采用 [MIT License](LICENSE)。独
 ### 自动接收与应用抽屉（v0.5.0）
 
 首页按下键滑出全部应用网格，返回收起；HDMI仍可从抽屉顶部进入。Launcher前台启动时直接启动Aurora AirPlay后台服务，无需进入接收端。源补丁及安装说明见 [AIRPLAY.md](docs/AIRPLAY.md)。
+
+### 自动投屏与统一设置（v0.6.0）
+
+AirPlay 开关、名称、PIN 和状态直接集成在 Launcher 设置。开启后随开机接收，关闭后不会被返回首页或重启重新开启；真实会话自动进入全屏，断开返回之前的界面，纯网络探测不抢屏。参考 DiPlay 的服务协调思路，沿用既有 UxPlay 协议实现。配套安装两包，流程、验证与 AirPlay 2 / DRM 限制见 [AIRPLAY.md](docs/AIRPLAY.md)。
